@@ -223,7 +223,21 @@ export const GhostText = Extension.create<GhostTextOptions>({
 
           return {
             update(editorView, prevState) {
-              if (ghostKey.getState(editorView.state)) return;
+              const current = ghostKey.getState(editorView.state);
+              const previous = ghostKey.getState(prevState);
+
+              // A suggestion is on screen: nothing to schedule.
+              if (current) return;
+
+              // One just went away — accepted with Tab, or dismissed with Esc.
+              // Abort whatever is still streaming: Esc changes neither the doc nor
+              // the selection, so without this the request runs on and its next
+              // chunk puts the dismissed suggestion straight back on screen.
+              if (previous) {
+                cancel();
+                return;
+              }
+
               if (
                 editorView.state.doc.eq(prevState.doc) &&
                 editorView.state.selection.eq(prevState.selection)

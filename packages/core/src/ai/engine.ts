@@ -87,11 +87,19 @@ export async function collectAI(
   signal?: AbortSignal
 ): Promise<string> {
   const controller = new AbortController();
-  signal?.addEventListener('abort', () => controller.abort(), { once: true });
-  let text = '';
-  for await (const chunk of provider.stream(request, controller.signal)) {
-    if (controller.signal.aborted) break;
-    text += chunk;
+  const forward = () => controller.abort();
+  signal?.addEventListener('abort', forward, { once: true });
+
+  try {
+    let text = '';
+    for await (const chunk of provider.stream(request, controller.signal)) {
+      if (controller.signal.aborted) break;
+      text += chunk;
+    }
+    return text;
+  } finally {
+    // A caller-owned signal outlives this call; without this it collects one
+    // dead listener per invocation.
+    signal?.removeEventListener('abort', forward);
   }
-  return text;
 }

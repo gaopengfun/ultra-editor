@@ -95,9 +95,19 @@ export const ImageUpload = Extension.create<ImageUploadOptions>({
     return {
       uploadImages:
         (files) =>
-        ({ editor }) => {
+        ({ editor, tr, dispatch }) => {
           const list = Array.from(files as File[]);
           if (!list.length) return false;
+          // `dispatch` is undefined during a `can()` probe. Uploading there would
+          // fire real network requests just to answer "is this possible?".
+          if (!dispatch) return true;
+
+          // Placeholders are dispatched straight to the view (each upload resolves
+          // on its own schedule). Tiptap would otherwise follow up by dispatching
+          // the transaction it prepared from the pre-placeholder state, which
+          // ProseMirror rejects: "Applying a mismatched transaction".
+          tr.setMeta('preventDispatch', true);
+
           const { view } = editor;
           list.forEach((file) => startUpload(view, file, this.options, view.state.selection.from));
           return true;

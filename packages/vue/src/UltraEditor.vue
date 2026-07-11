@@ -11,6 +11,7 @@ import {
   rotateImage,
   type AITask,
   type ImageAlign,
+  type SlashGroup,
   type SlashItem,
   type UploadError
 } from '@ultra-editor/core';
@@ -48,7 +49,6 @@ const emit = defineEmits<{
 }>();
 
 const t = computed(() => createTranslator(props.locale, props.messages));
-const translate = computed(() => t.value);
 
 const toasts = useToasts();
 const prompt = usePrompt();
@@ -75,6 +75,19 @@ const slash = reactive({
   command: null as ((item: SlashItem) => void) | null
 });
 
+const GROUP_ORDER: SlashGroup[] = ['basic', 'insert', 'ai'];
+
+/**
+ * Group the items once, here, and let the menu render the result in order.
+ *
+ * The keyboard handler indexes into this array, so it has to be the same array the
+ * menu paints — if the menu did its own grouping, Enter would fire whichever item
+ * happened to sit at that index in the *unsorted* list, not the highlighted one.
+ */
+function orderSlashItems(items: SlashItem[]): SlashItem[] {
+  return GROUP_ORDER.flatMap((group) => items.filter((item) => item.group === group));
+}
+
 function placeSlash(rect: DOMRect | null | undefined) {
   if (!rect) return;
   slash.x = Math.min(rect.left, window.innerWidth - 280);
@@ -83,14 +96,14 @@ function placeSlash(rect: DOMRect | null | undefined) {
 
 const slashRender = () => ({
   onStart: (suggestion: SuggestionProps<SlashItem>) => {
-    slash.items = suggestion.items;
+    slash.items = orderSlashItems(suggestion.items);
     slash.index = 0;
     slash.command = (item: SlashItem) => suggestion.command(item);
     placeSlash(suggestion.clientRect?.());
     slash.visible = true;
   },
   onUpdate: (suggestion: SuggestionProps<SlashItem>) => {
-    slash.items = suggestion.items;
+    slash.items = orderSlashItems(suggestion.items);
     slash.index = 0;
     slash.command = (item: SlashItem) => suggestion.command(item);
     placeSlash(suggestion.clientRect?.());
@@ -195,7 +208,9 @@ const editor = useEditor({
   }
 });
 
-const ai = useAi(editor, provider, translate.value, toRef(props, 'locale'));
+// `t` is passed as the ref, not its current value: the AI panel's strings have to
+// follow a locale change like every other component's do.
+const ai = useAi(editor, provider, t, toRef(props, 'locale'), () => props.editable);
 
 /* Two-way binding ------------------------------------------------------------ */
 
@@ -203,19 +218,25 @@ const ai = useAi(editor, provider, translate.value, toRef(props, 'locale'));
 // echoed our own value back" (ignore) from "the parent set new content" (apply).
 let lastEmitted = props.modelValue;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+let pending: string | null = null;
+
+function flushEmit() {
+  if (pending === null) return;
+  const html = pending;
+  pending = null;
+  emit('update:modelValue', html);
+  emit('change', html);
+}
 
 function scheduleEmit(html: string) {
   lastEmitted = html;
+  pending = html;
   if (!props.debounce) {
-    emit('update:modelValue', html);
-    emit('change', html);
+    flushEmit();
     return;
   }
   clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    emit('update:modelValue', html);
-    emit('change', html);
-  }, props.debounce);
+  debounceTimer = setTimeout(flushEmit, props.debounce);
 }
 
 watch(
@@ -236,7 +257,10 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  // Flush rather than drop: with `debounce` set, the last edits before an unmount
+  // would otherwise never reach v-model and be silently lost.
   clearTimeout(debounceTimer);
+  flushEmit();
   editor.value?.destroy();
 });
 
@@ -300,9 +324,12 @@ const pickImage = () => fileInput.value?.click();
 
 function onFilePicked(event: Event) {
   const input = event.target as HTMLInputElement;
-  const files = input.files;
+  // Copy the files out BEFORE resetting the input. `input.files` is a live
+  // FileList that `input.value = ''` empties in place — holding the reference
+  // across the reset yields an empty list and the upload silently never happens.
+  const files = Array.from(input.files ?? []);
   input.value = '';
-  if (files?.length) editor.value?.commands.uploadImages(files);
+  if (files.length) editor.value?.commands.uploadImages(files);
 }
 
 function imagePosAt(view: EditorView, event: MouseEvent): number | null {

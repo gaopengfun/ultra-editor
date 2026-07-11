@@ -112,6 +112,18 @@ export const ImageFigure = Image.extend({
     return ({ node, getPos, HTMLAttributes }) => {
       const el = document.createElement('img');
       el.draggable = false;
+
+      // The node view replaces renderHTML on the editing surface, so the <figcaption>
+      // that renderHTML emits never appears while writing. Without this, adding a
+      // caption looks like it did nothing — the text only shows up after save.
+      const caption = document.createElement('figcaption');
+      caption.className = 'ue-figcaption';
+      caption.contentEditable = 'false';
+
+      const syncCaption = (value: string | null) => {
+        caption.textContent = value ?? '';
+        caption.style.display = value ? '' : 'none';
+      };
       const merged = mergeAttributes(optionHTMLAttributes, HTMLAttributes);
       Object.entries(merged).forEach(([key, value]) => {
         if (value == null) return;
@@ -155,6 +167,7 @@ export const ImageFigure = Image.extend({
           }
           el.style.width = updatedNode.attrs.width ? `${updatedNode.attrs.width}px` : '';
           el.style.height = updatedNode.attrs.height ? `${updatedNode.attrs.height}px` : '';
+          syncCaption(updatedNode.attrs.caption as string | null);
           return true;
         },
         options: {
@@ -168,6 +181,14 @@ export const ImageFigure = Image.extend({
       container.style.justifyContent = node.attrs.align
         ? (JUSTIFY[node.attrs.align] ?? 'flex-start')
         : '';
+
+      // The resize wrapper lays its children out in a row; letting it wrap and
+      // giving the caption a full-width basis drops it onto its own line under
+      // the image, where a caption belongs.
+      container.style.flexWrap = 'wrap';
+      container.appendChild(caption);
+      syncCaption(node.attrs.caption as string | null);
+
       // Hide until decoded so a half-loaded image doesn't flash at the wrong size.
       container.style.visibility = 'hidden';
       container.style.pointerEvents = 'none';

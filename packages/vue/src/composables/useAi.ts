@@ -1,5 +1,6 @@
-import { reactive, type Ref } from 'vue';
+import { onScopeDispose, reactive, type Ref } from 'vue';
 import type { Editor } from '@tiptap/vue-3';
+import type { Transaction } from '@tiptap/pm/state';
 import {
   runAITask,
   SELECTION_TASKS,
@@ -30,6 +31,11 @@ const NEEDS_INSTRUCTION: AITask[] = ['write', 'custom', 'translate', 'changeTone
 
 const CONTEXT_LENGTH = 2000;
 
+/** Matches the panel's max width / typical height in the stylesheet. */
+const PANEL_WIDTH = 560;
+const PANEL_HEIGHT = 240;
+const MARGIN = 16;
+
 /** Model output as block content: one paragraph per blank-line-separated block. */
 function blockContent(text: string) {
   return text.split(/\n{2,}/).map((block) => ({
@@ -54,6 +60,15 @@ function inlineContent(text: string) {
   );
 }
 
+interface Target {
+  from: number;
+  to: number;
+  /** True when the selection sits inside a single text block without filling it. */
+  inline: boolean;
+  /** Position just after the block holding the selection — where "insert below" goes. */
+  blockAfter: number;
+}
+
 export interface AIController {
   state: AIPanelState;
   start: (task: AITask) => void;
@@ -67,16 +82,17 @@ export interface AIController {
 /**
  * Orchestrates one AI generation at a time.
  *
- * Generation into the document is done through the AIStream extension so that a
- * discarded result leaves nothing behind and an accepted one is a single undo
- * step. Selection transforms stream into the panel instead, so the author can
- * compare the suggestion against the original before committing to it.
+ * Generation into the document goes through the AIStream extension, so a discarded
+ * result leaves nothing behind and an accepted one is a single undo step. Selection
+ * transforms stream into the panel instead, letting the author compare the
+ * suggestion against the original before committing to it.
  */
 export function useAi(
   editor: Ref<Editor | undefined>,
   provider: Ref<AIProvider | null | undefined>,
-  t: Translator,
-  locale: Ref<LocaleName>
+  t: Ref<Translator>,
+  locale: Ref<LocaleName>,
+  isEditable: () => boolean
 ): AIController {
   const state = reactive<AIPanelState>({
     open: false,
@@ -90,23 +106,36 @@ export function useAi(
   });
 
   let run: AIRun | null = null;
-  let selection: {
-    from: number;
-    to: number;
-    text: string;
-    /** True when the selection sits inside a single text block without filling it. */
-    inline: boolean;
-    /** Position just after the block that holds the selection — where "insert below" goes. */
-    blockAfter: number;
-  } | null = null;
+  let target: Target | null = null;
   let context = '';
-  let wasEditable = true;
+  let locked = false;
 
-  // Matches the panel's max width / typical height in the stylesheet. Clamping to
-  // anything smaller lets the panel hang off the right edge of the viewport.
-  const PANEL_WIDTH = 560;
-  const PANEL_HEIGHT = 240;
-  const MARGIN = 16;
+  /**
+   * The document stays editable while a transform streams into the panel, so the
+   * positions captured at start can be anywhere by the time the user accepts.
+   * Ride every transaction's mapping to keep them pointing at the same text —
+   * otherwise "replace" overwrites an unrelated span, or throws when the captured
+   * range now falls outside the document.
+   */
+  const followEdits = ({ transaction }: { transaction: Transaction }) => {
+    if (!target || !transaction.docChanged) return;
+    const size = transaction.doc.content.size;
+    const from = Math.min(transaction.mapping.map(target.from, -1), size);
+    const to = Math.min(transaction.mapping.map(target.to, 1), size);
+    target = {
+      ...target,
+      from: Math.min(from, to),
+      to: Math.max(from, to),
+      blockAfter: Math.min(transaction.mapping.map(target.blockAfter, 1), size)
+    };
+  };
+
+  function watchEdits(on: boolean) {
+    const instance = editor.value;
+    if (!instance) return;
+    if (on) instance.on('transaction', followEdits);
+    else instance.off('transaction', followEdits);
+  }
 
   function anchorToCursor() {
     const instance = editor.value;
@@ -129,31 +158,30 @@ export function useAi(
     const fillsBlock =
       sameBlock && $from.parentOffset === 0 && $to.parentOffset === $to.parent.content.size;
 
-    selection = {
+    target = {
       from,
       to,
-      text: instance.state.doc.textBetween(from, to, '\n\n', ' '),
       inline: sameBlock && $from.parent.isTextblock && !fillsBlock,
       blockAfter: $to.depth > 0 ? $to.after($to.depth) : to
     };
 
-    context = instance.state.doc.textBetween(
-      Math.max(0, from - CONTEXT_LENGTH),
-      from,
-      '\n\n',
-      ' '
-    );
+    context = instance.state.doc.textBetween(Math.max(0, from - CONTEXT_LENGTH), from, '\n\n', ' ');
   }
 
-  function lockEditor(locked: boolean) {
+  /** Locking is only for insert mode, where the model writes into the live document. */
+  function lockEditor(on: boolean) {
     const instance = editor.value;
     if (!instance) return;
-    if (locked) {
-      wasEditable = instance.isEditable;
+    if (on) {
+      locked = true;
       instance.setEditable(false);
-    } else {
-      instance.setEditable(wasEditable);
+      return;
     }
+    if (!locked) return;
+    locked = false;
+    // Restore what the host currently wants, not what was true when we locked —
+    // `editable` may have been switched to false while the model was writing.
+    instance.setEditable(isEditable());
   }
 
   function execute() {
@@ -161,9 +189,13 @@ export function useAi(
     const ai = provider.value;
     if (!instance || !ai) {
       state.phase = 'error';
-      state.error = t('ai.noProvider');
+      state.error = t.value('ai.noProvider');
       return;
     }
+
+    const selectionText = target
+      ? instance.state.doc.textBetween(target.from, target.to, '\n\n', ' ')
+      : '';
 
     state.phase = 'running';
     state.text = '';
@@ -173,13 +205,15 @@ export function useAi(
     if (insert) {
       instance.commands.aiStreamStart();
       lockEditor(true);
+    } else {
+      watchEdits(true);
     }
 
     run = runAITask(
       ai,
       {
         task: state.task,
-        text: selection?.text ?? '',
+        text: selectionText,
         context,
         instruction: state.instruction || undefined,
         locale: locale.value
@@ -187,7 +221,7 @@ export function useAi(
       {
         onChunk: (_chunk, accumulated) => {
           state.text = accumulated;
-          if (insert) instance.commands.aiStreamSet(accumulated);
+          if (insert) editor.value?.commands.aiStreamSet(accumulated);
         },
         onDone: () => {
           state.phase = 'done';
@@ -197,9 +231,9 @@ export function useAi(
         },
         onError: (error) => {
           state.phase = 'error';
-          state.error = error.message || t('ai.failed');
+          state.error = error.message || t.value('ai.failed');
           if (insert) {
-            instance.commands.aiStreamDiscard();
+            editor.value?.commands.aiStreamDiscard();
             lockEditor(false);
           }
         }
@@ -212,8 +246,7 @@ export function useAi(
   }
 
   function start(task: AITask) {
-    const instance = editor.value;
-    if (!instance) return;
+    if (!editor.value) return;
 
     capture();
     anchorToCursor();
@@ -239,11 +272,14 @@ export function useAi(
 
   function stop() {
     run?.abort();
-    run = null;
   }
 
+  /** Always abort — an orphaned stream keeps costing money after nobody is watching. */
   function cleanup() {
+    run?.abort();
     run = null;
+    watchEdits(false);
+    target = null;
     state.open = false;
     state.text = '';
     state.instruction = '';
@@ -261,43 +297,55 @@ export function useAi(
     }
 
     const text = state.text.trim();
-    if (!text || !selection) {
+    if (!text || !target) {
       cleanup();
       return;
     }
 
+    // `target` has been ridden through every edit since capture, so these are the
+    // live positions of the original selection.
+    const { from, to, blockAfter, inline } = target;
+
     if (placement === 'replace') {
-      const content = selection.inline ? inlineContent(text) : blockContent(text);
-      instance
-        .chain()
-        .focus()
-        .insertContentAt({ from: selection.from, to: selection.to }, content)
-        .run();
+      const content = inline ? inlineContent(text) : blockContent(text);
+      instance.chain().focus().insertContentAt({ from, to }, content).run();
     } else {
       // "Below" always means a new block after the one being worked on — never
       // spliced into the middle of the host paragraph.
-      instance.chain().focus().insertContentAt(selection.blockAfter, blockContent(text)).run();
+      instance.chain().focus().insertContentAt(blockAfter, blockContent(text)).run();
     }
     cleanup();
   }
 
   function discard() {
-    stop();
     const instance = editor.value;
     if (instance && state.mode === 'insert') {
+      run?.abort();
       instance.commands.aiStreamDiscard();
       lockEditor(false);
     }
     cleanup();
   }
 
+  /** Throw away the previous attempt — including whatever it wrote — and run again. */
   function retry() {
+    run?.abort();
+    run = null;
     if (state.mode === 'insert') {
       editor.value?.commands.aiStreamDiscard();
       lockEditor(false);
+    } else {
+      watchEdits(false);
     }
     execute();
   }
+
+  // A route change mid-generation must not leave the stream running.
+  onScopeDispose(() => {
+    run?.abort();
+    run = null;
+    watchEdits(false);
+  });
 
   return { state, start, submit, stop, retry, accept, discard };
 }

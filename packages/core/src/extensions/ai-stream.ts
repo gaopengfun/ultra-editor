@@ -6,6 +6,12 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 export interface AIStreamRange {
   from: number;
   to: number;
+  /**
+   * The region swallowed an empty block to start (the `/write` case). Accept has
+   * to put that block back before replaying the text, or undo lands the author in
+   * a document that has quietly lost the paragraph they were standing in.
+   */
+  consumedEmptyBlock?: boolean;
 }
 
 interface StreamMeta {
@@ -63,6 +69,14 @@ function textToNodes(text: string, schema: EditorState['schema']): ProseMirrorNo
 const silent = (tr: Transaction) => tr.setMeta('addToHistory', false);
 
 /**
+ * What the streaming region should contain to be back where it started: nothing,
+ * or the empty block the region swallowed on the way in.
+ */
+function undoTarget(state: EditorState, range: AIStreamRange): ProseMirrorNode[] {
+  return range.consumedEmptyBlock ? [state.schema.nodes.paragraph.create()] : [];
+}
+
+/**
  * Where a generation should be written, expressed at block granularity.
  *
  * This matters more than it looks. Writing paragraphs at an *inline* cursor makes
@@ -90,7 +104,9 @@ function blockTarget(state: EditorState): AIStreamRange {
   const start = $pos.before(depth);
   const end = $pos.after(depth);
 
-  return block.content.size === 0 ? { from: start, to: end } : { from: end, to: end };
+  return block.content.size === 0
+    ? { from: start, to: end, consumedEmptyBlock: true }
+    : { from: end, to: end };
 }
 
 /**
@@ -133,7 +149,9 @@ export const AIStream = Extension.create({
             // node sizes: if ProseMirror adjusts the slice to fit, the mapping is
             // right and the arithmetic is not.
             const to = tr.mapping.map(range.to, 1);
-            tr.setMeta(aiStreamKey, { set: { from: range.from, to } } satisfies StreamMeta);
+            tr.setMeta(aiStreamKey, {
+              set: { from: range.from, to, consumedEmptyBlock: range.consumedEmptyBlock }
+            } satisfies StreamMeta);
           }
           return true;
         },
@@ -154,15 +172,21 @@ export const AIStream = Extension.create({
           // of the text to keep in sync, and marks and structure survive exactly.
           const generated = view.state.doc.slice(range.from, range.to).content;
 
-          const rollback = silent(view.state.tr.deleteRange(range.from, range.to));
+          const restored = undoTarget(view.state, range);
+          const restoredSize = restored.reduce((size, node) => size + node.nodeSize, 0);
+
+          const rollback = silent(view.state.tr.replaceWith(range.from, range.to, restored));
           rollback.setMeta(aiStreamKey, { clear: true } satisfies StreamMeta);
           view.dispatch(rollback);
 
           if (generated.size === 0) return true;
 
           // Re-applied as one ordinary edit, so undo removes the whole passage at
-          // once instead of unwinding it one streamed chunk at a time.
-          view.dispatch(view.state.tr.replaceWith(range.from, range.from, generated));
+          // once instead of unwinding it one streamed chunk at a time — and lands
+          // back on the pre-generation document, empty paragraph included.
+          view.dispatch(
+            view.state.tr.replaceWith(range.from, range.from + restoredSize, generated)
+          );
           return true;
         },
 
@@ -173,7 +197,7 @@ export const AIStream = Extension.create({
           if (!range) return false;
           if (dispatch) {
             silent(tr)
-              .deleteRange(range.from, range.to)
+              .replaceWith(range.from, range.to, undoTarget(state, range))
               .setMeta(aiStreamKey, { clear: true } satisfies StreamMeta);
           }
           return true;

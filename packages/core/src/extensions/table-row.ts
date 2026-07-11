@@ -64,9 +64,20 @@ function rowDecorations(doc: ProseMirrorNode, activeRow: number | null): Decorat
 
 function rowResizingPlugin() {
   let dragging: Drag = null;
+  // Tracked so an editor destroyed mid-drag can take its document listeners with
+  // it — otherwise they outlive the view and fire against a dead one.
+  let endDrag: (() => void) | null = null;
 
   return new Plugin<{ activeRow: number | null }>({
     key: rowResizeKey,
+
+    view() {
+      return {
+        destroy() {
+          endDrag?.();
+        }
+      };
+    },
     state: {
       init: () => ({ activeRow: null }),
       apply(tr, current) {
@@ -126,10 +137,15 @@ function rowResizingPlugin() {
             drag.row.style.height = `${heightAt(e)}px`;
           };
 
-          const onUp = (e: MouseEvent) => {
+          const detach = () => {
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
             dragging = null;
+            endDrag = null;
+          };
+
+          const onUp = (e: MouseEvent) => {
+            detach();
 
             const height = heightAt(e);
             view.dom.style.cursor = '';
@@ -147,6 +163,7 @@ function rowResizingPlugin() {
             view.dispatch(tr);
           };
 
+          endDrag = detach;
           document.addEventListener('mousemove', onMove);
           document.addEventListener('mouseup', onUp);
           return true;

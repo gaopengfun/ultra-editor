@@ -1,8 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import UeIcon from './UeIcon.vue';
-import type { SlashGroup, SlashItem, Translator } from '@ultra-editor/core';
+import type { SlashItem, Translator } from '@ultra-editor/core';
 
+/**
+ * `items` arrives already grouped (see `orderSlashItems` in UltraEditor) and this
+ * component renders it in order, inserting a header when the group changes.
+ *
+ * It deliberately does NOT re-sort: doing so here would make the rendered order
+ * differ from the array the keyboard handler indexes into, so Enter would run a
+ * different command than the one highlighted.
+ */
 const props = defineProps<{
   visible: boolean;
   x: number;
@@ -23,19 +31,13 @@ const GROUP_LABEL = {
   ai: 'slash.group.ai'
 } as const;
 
-/** Flat list plus group headers, so keyboard indices stay simple integers. */
-const groups = computed(() => {
-  const order: SlashGroup[] = ['basic', 'insert', 'ai'];
-  let cursor = 0;
-  return order
-    .map((group) => {
-      const items = props.items
-        .filter((item) => item.group === group)
-        .map((item) => ({ item, index: cursor++ }));
-      return { group, items };
-    })
-    .filter((entry) => entry.items.length > 0);
-});
+const rows = computed(() =>
+  props.items.map((item, index) => ({
+    item,
+    index,
+    startsGroup: index === 0 || props.items[index - 1].group !== item.group
+  }))
+);
 </script>
 
 <template>
@@ -48,22 +50,22 @@ const groups = computed(() => {
     >
       <p v-if="!items.length" class="ue-menu__empty">{{ t('slash.empty') }}</p>
 
-      <template v-for="group in groups" :key="group.group">
-        <div class="ue-menu__group">{{ t(GROUP_LABEL[group.group]) }}</div>
+      <template v-for="row in rows" :key="row.item.key">
+        <div v-if="row.startsGroup" class="ue-menu__group">
+          {{ t(GROUP_LABEL[row.item.group]) }}
+        </div>
         <button
-          v-for="entry in group.items"
-          :key="entry.item.key"
           type="button"
           class="ue-menu__item"
           role="option"
-          :aria-selected="entry.index === index"
-          :class="{ 'is-highlighted': entry.index === index }"
-          @mouseenter="emit('hover', entry.index)"
+          :aria-selected="row.index === index"
+          :class="{ 'is-highlighted': row.index === index }"
+          @mouseenter="emit('hover', row.index)"
           @mousedown.prevent
-          @click="emit('select', entry.item)"
+          @click="emit('select', row.item)"
         >
-          <UeIcon :name="entry.item.icon" />
-          <span class="ue-menu__label">{{ t(entry.item.labelKey) }}</span>
+          <UeIcon :name="row.item.icon" />
+          <span class="ue-menu__label">{{ t(row.item.labelKey) }}</span>
         </button>
       </template>
     </div>

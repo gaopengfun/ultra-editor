@@ -85,4 +85,41 @@ describe('AIStream', () => {
     editor.commands.aiStreamStart();
     expect(editor.commands.aiStreamStart()).toBe(false);
   });
+
+  // The `/write` shape: the slash text is deleted first, so the generation starts
+  // from an empty paragraph, which the streaming region replaces outright.
+  //
+  // These build their own editor rather than calling setContent — setContent is
+  // itself an undoable step, and ProseMirror's history would group it with the
+  // accept that follows milliseconds later, making one undo look like two.
+  describe('generating from an empty block', () => {
+    let blank: Editor;
+
+    beforeEach(() => {
+      blank = makeEditor('<p>正文</p><p></p>');
+      blank.commands.setTextSelection(blank.state.doc.content.size - 1);
+    });
+
+    it('gives the empty paragraph back on undo, not just the generated text', () => {
+      const before = blank.getHTML();
+
+      blank.commands.aiStreamStart();
+      blank.commands.aiStreamSet('AI 段落');
+      blank.commands.aiStreamAccept();
+      expect(blank.getHTML()).toBe('<p>正文</p><p>AI 段落</p>');
+
+      blank.commands.undo();
+      expect(blank.getHTML()).toBe(before);
+    });
+
+    it('gives the empty paragraph back on discard', () => {
+      const before = blank.getHTML();
+
+      blank.commands.aiStreamStart();
+      blank.commands.aiStreamSet('AI 段落');
+      blank.commands.aiStreamDiscard();
+
+      expect(blank.getHTML()).toBe(before);
+    });
+  });
 });

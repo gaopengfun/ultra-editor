@@ -659,6 +659,17 @@
   pointer-events: none;
 }
 
+/* Caption drawn by the image node view (renderHTML's <figcaption> does not reach
+   the editing surface, so the node view grows its own). */
+.ultra-editor .ue-figcaption {
+  flex: 0 0 100%;
+  margin-top: 0.4em;
+  font-size: 0.85em;
+  color: var(--ue-text-muted);
+  text-align: center;
+  user-select: none;
+}
+
 /* Upload placeholder ------------------------------------------------------ */
 
 .ue-upload-placeholder {
