@@ -48,7 +48,7 @@ const upload: UploadHandler = async (blob, filename) => {
   if (!res.ok) throw new Error('upload failed');
 
   const data = await res.json();
-  return data.url;   // 必须返回可访问的图片 URL
+  return data.url; // 必须返回可访问的图片 URL
 };
 </script>
 
@@ -104,7 +104,7 @@ import '@ultra-editor/core/content.css';
 ## 深色模式
 
 ```html
-<html data-theme="dark">
+<html data-theme="dark"></html>
 ```
 
 不设置则跟随系统 `prefers-color-scheme`。

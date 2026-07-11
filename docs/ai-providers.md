@@ -10,13 +10,13 @@ interface AIProvider {
 }
 
 interface AIRequest {
-  task: AITask;          // continue | improve | translate | summarize | rewrite |
-                         // expand | shorten | fixGrammar | changeTone |
-                         // complete | write | custom
-  text: string;          // 选区文本（生成类任务为空）
-  context?: string;      // 光标前的正文，续写 / 补全靠它
-  instruction?: string;  // 目标语言、语气、自定义指令
-  locale?: string;       // 文档语言
+  task: AITask; // continue | improve | translate | summarize | rewrite |
+  // expand | shorten | fixGrammar | changeTone |
+  // complete | write | custom
+  text: string; // 选区文本（生成类任务为空）
+  context?: string; // 光标前的正文，续写 / 补全靠它
+  instruction?: string; // 目标语言、语气、自定义指令
+  locale?: string; // 文档语言
 }
 ```
 
@@ -39,7 +39,7 @@ interface AIRequest {
 import { createOpenAIProvider } from '@ultra-editor/core/providers/openai';
 
 const provider = createOpenAIProvider({
-  baseURL: '/api/ai',        // 你的后端代理
+  baseURL: '/api/ai', // 你的后端代理
   model: 'deepseek-chat',
   temperature: 0.7,
   maxTokens: 2048
@@ -78,7 +78,7 @@ app.post('/api/ai/chat/completions', async (req, res) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}`   // 密钥只在服务端
+      Authorization: `Bearer ${process.env.DEEPSEEK_API_KEY}` // 密钥只在服务端
     },
     body: JSON.stringify(req.body)
   });
@@ -101,9 +101,9 @@ const myProvider: AIProvider = {
   async *stream(request, signal) {
     const res = await fetch('/api/my-llm', {
       method: 'POST',
-      signal,                                   // 把中断信号透传下去
+      signal, // 把中断信号透传下去
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request)             // 后端自己决定 prompt
+      body: JSON.stringify(request) // 后端自己决定 prompt
     });
 
     const reader = res.body!.getReader();
@@ -112,7 +112,7 @@ const myProvider: AIProvider = {
     while (true) {
       const { done, value } = await reader.read();
       if (done || signal.aborted) break;
-      yield decoder.decode(value, { stream: true });   // 增量
+      yield decoder.decode(value, { stream: true }); // 增量
     }
   }
 };
@@ -136,7 +136,7 @@ createOpenAIProvider({
         user: `润色这段话：\n\n${request.text}`
       };
     }
-    return promptFor(request);   // 其余走默认
+    return promptFor(request); // 其余走默认
   }
 });
 ```

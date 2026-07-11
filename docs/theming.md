@@ -20,7 +20,9 @@
 显式指定：
 
 ```html
-<html data-theme="dark">   <!-- 或 "light" -->
+<html data-theme="dark">
+  <!-- 或 "light" -->
+</html>
 ```
 
 > **属性必须放在 `<html>` 上。** 放在 `#app` 或某个 wrapper 上，编辑器本体会变深色，但 Teleport 到 body 的菜单和对话框够不着，会留在浅色。
@@ -29,26 +31,26 @@
 
 ### 颜色
 
-| 变量 | 默认（浅色） | 默认（深色） |
-|------|-------------|-------------|
-| `--ue-primary` | `#5b5bd6` | `#c4c0ff` |
-| `--ue-primary-rgb` | `91 91 214` | `196 192 255` |
-| `--ue-on-primary` | `#ffffff` | `#23204d` |
-| `--ue-accent` | `#1f7ae0` | `#7fc4ff` |
-| `--ue-surface` | `#ffffff` | `#16151a` |
-| `--ue-surface-container` | `#f4f4f8` | `#1e1d24` |
-| `--ue-surface-container-high` | `#ececf2` | `#26252d` |
-| `--ue-hover` | `primary / 8%` | `primary / 12%` |
-| `--ue-text` | `#1c1b1f` | `#e6e1e9` |
-| `--ue-text-secondary` | `#49454f` | `#cac4d0` |
-| `--ue-text-muted` | `#79747e` | `#948f99` |
-| `--ue-text-placeholder` | `#a9a4b3` | `#6b6673` |
-| `--ue-border` | `#e2e2ea` | `#322f39` |
-| `--ue-danger` | `#d3302f` | `#ff8a80` |
-| `--ue-danger-rgb` | `211 48 47` | `255 138 128` |
-| `--ue-code-bg` | `#1e2233` | `#0f1220` |
-| `--ue-code-fg` | `#e6e6f0` | 同 |
-| `--ue-inline-code` | `#b5297f` | `#ff9ad5` |
+| 变量                          | 默认（浅色）   | 默认（深色）    |
+| ----------------------------- | -------------- | --------------- |
+| `--ue-primary`                | `#5b5bd6`      | `#c4c0ff`       |
+| `--ue-primary-rgb`            | `91 91 214`    | `196 192 255`   |
+| `--ue-on-primary`             | `#ffffff`      | `#23204d`       |
+| `--ue-accent`                 | `#1f7ae0`      | `#7fc4ff`       |
+| `--ue-surface`                | `#ffffff`      | `#16151a`       |
+| `--ue-surface-container`      | `#f4f4f8`      | `#1e1d24`       |
+| `--ue-surface-container-high` | `#ececf2`      | `#26252d`       |
+| `--ue-hover`                  | `primary / 8%` | `primary / 12%` |
+| `--ue-text`                   | `#1c1b1f`      | `#e6e1e9`       |
+| `--ue-text-secondary`         | `#49454f`      | `#cac4d0`       |
+| `--ue-text-muted`             | `#79747e`      | `#948f99`       |
+| `--ue-text-placeholder`       | `#a9a4b3`      | `#6b6673`       |
+| `--ue-border`                 | `#e2e2ea`      | `#322f39`       |
+| `--ue-danger`                 | `#d3302f`      | `#ff8a80`       |
+| `--ue-danger-rgb`             | `211 48 47`    | `255 138 128`   |
+| `--ue-code-bg`                | `#1e2233`      | `#0f1220`       |
+| `--ue-code-fg`                | `#e6e6f0`      | 同              |
+| `--ue-inline-code`            | `#b5297f`      | `#ff9ad5`       |
 
 ### ⚠️ `--ue-primary-rgb` 必须是**空格分隔**
 
@@ -75,30 +77,30 @@ background: rgb(var(--ue-primary-rgb) / 8%);
 
 ### 形状与阴影
 
-| 变量 | 默认 |
-|------|------|
+| 变量                                  | 默认                            |
+| ------------------------------------- | ------------------------------- |
 | `--ue-radius-xs` / `sm` / `md` / `lg` | `4px` / `8px` / `12px` / `16px` |
-| `--ue-shadow-1` / `2` / `3` | 由浅到深的三级投影 |
-| `--ue-shadow-glow` | 聚焦时的主色光晕 |
+| `--ue-shadow-1` / `2` / `3`           | 由浅到深的三级投影              |
+| `--ue-shadow-glow`                    | 聚焦时的主色光晕                |
 
 ### 动效
 
-| 变量 | 默认 |
-|------|------|
-| `--ue-ease` | `cubic-bezier(0.2, 0, 0, 1)` |
-| `--ue-duration-fast` | `120ms` |
-| `--ue-duration` | `200ms` |
+| 变量                 | 默认                         |
+| -------------------- | ---------------------------- |
+| `--ue-ease`          | `cubic-bezier(0.2, 0, 0, 1)` |
+| `--ue-duration-fast` | `120ms`                      |
+| `--ue-duration`      | `200ms`                      |
 
 `prefers-reduced-motion: reduce` 时所有过渡会自动关闭。
 
 ### 排版与尺寸
 
-| 变量 | 默认 |
-|------|------|
-| `--ue-font` | `inherit`（默认跟随宿主页面字体） |
-| `--ue-font-mono` | 系统等宽字体栈 |
-| `--ue-min-height` | `500px` |
-| `--ue-max-height` | `70vh` |
+| 变量              | 默认                              |
+| ----------------- | --------------------------------- |
+| `--ue-font`       | `inherit`（默认跟随宿主页面字体） |
+| `--ue-font-mono`  | 系统等宽字体栈                    |
+| `--ue-min-height` | `500px`                           |
+| `--ue-max-height` | `70vh`                            |
 
 高度也可以直接用 props：`<UltraEditor min-height="300px" max-height="60vh" />`。
 
@@ -128,10 +130,10 @@ background: rgb(var(--ue-primary-rgb) / 8%);
 
 ## 两份样式表
 
-| 引入 | 内容 | 用在哪 |
-|------|------|--------|
-| `@ultra-editor/core/styles.css` | 全部：tokens + 内容样式 + 编辑器界面 + AI 界面 | 有编辑器的页面 |
-| `@ultra-editor/core/content.css` | tokens + 内容样式 | 只读渲染页（文章详情等） |
+| 引入                             | 内容                                           | 用在哪                   |
+| -------------------------------- | ---------------------------------------------- | ------------------------ |
+| `@ultra-editor/core/styles.css`  | 全部：tokens + 内容样式 + 编辑器界面 + AI 界面 | 有编辑器的页面           |
+| `@ultra-editor/core/content.css` | tokens + 内容样式                              | 只读渲染页（文章详情等） |
 
 阅读态把内容包一层 `ue-content` 即可：
 

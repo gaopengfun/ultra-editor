@@ -12,7 +12,12 @@ import { createUltraKit } from '@ultra-editor/core';
 import Mention from '@tiptap/extension-mention';
 
 const editor = new Editor({
-  extensions: [...createUltraKit(), Mention.configure({ /* … */ })]
+  extensions: [
+    ...createUltraKit(),
+    Mention.configure({
+      /* … */
+    })
+  ]
 });
 ```
 
@@ -35,9 +40,9 @@ import { DEFAULT_SLASH_ITEMS, type SlashItem } from '@ultra-editor/core';
 const callout: SlashItem = {
   key: 'callout',
   group: 'insert',
-  labelKey: 'toolbar.blockquote',   // i18n key；自定义文案用 messages 覆盖
+  labelKey: 'toolbar.blockquote', // i18n key；自定义文案用 messages 覆盖
   keywords: ['callout', 'tip', 'tishi'],
-  icon: 'quote',                     // 图标名，见 packages/vue/src/icons.ts
+  icon: 'quote', // 图标名，见 packages/vue/src/icons.ts
   run: ({ editor, range }) => {
     editor.chain().focus().deleteRange(range).toggleBlockquote().run();
   }
@@ -69,12 +74,12 @@ AI 类命令通过注入的 `ai()` 交回宿主 —— core 自己不渲染任�
 `AIStream` 把「AI 往文档里写东西」抽成了四个命令。你自己的 AI 功能可以直接复用，白拿「丢弃不留痕 + 接受只占一步撤销」这套语义：
 
 ```ts
-editor.commands.aiStreamStart();          // 在光标处开一个生成区（对齐到块边界）
+editor.commands.aiStreamStart(); // 在光标处开一个生成区（对齐到块边界）
 for await (const chunk of myStream()) {
   accumulated += chunk;
-  editor.commands.aiStreamSet(accumulated);   // 幂等，重复渲染累积文本
+  editor.commands.aiStreamSet(accumulated); // 幂等，重复渲染累积文本
 }
-editor.commands.aiStreamAccept();         // 或 aiStreamDiscard()
+editor.commands.aiStreamAccept(); // 或 aiStreamDiscard()
 ```
 
 它的实现有两处不那么显然、但很关键：

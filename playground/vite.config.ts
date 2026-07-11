@@ -16,7 +16,9 @@ export default defineConfig({
       '@ultra-editor/core/providers/anthropic': fileURLToPath(
         new URL('../packages/core/src/providers/anthropic.ts', import.meta.url)
       ),
-      '@ultra-editor/core': fileURLToPath(new URL('../packages/core/src/index.ts', import.meta.url)),
+      '@ultra-editor/core': fileURLToPath(
+        new URL('../packages/core/src/index.ts', import.meta.url)
+      ),
       '@ultra-editor/vue': fileURLToPath(new URL('../packages/vue/src/index.ts', import.meta.url))
     }
   },

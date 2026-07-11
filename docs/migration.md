@@ -4,13 +4,13 @@
 
 ## 迁移前后
 
-| | 之前 | 之后 |
-|---|------|------|
-| 编辑器组件 | `src/components/TiptapEditor.vue`（1165 行）+ `src/components/tiptap/*`（11 个文件） | `<UltraEditor>` |
-| UI 依赖 | Element Plus + vue-advanced-cropper | 无 |
-| 上传 | 组件内写死 `axios.post('/api-blog/upload/image')` | 注入 `upload` 函数 |
-| 阅读态样式 | `editorView.css`（262 行，手抄一份编辑态样式） | 复用 SDK 的 `ue-content` |
-| 内容绑定 | `ref.getHTML()` 拉取 + `watch(props.content)` 回灌 | `v-model` |
+|            | 之前                                                                                 | 之后                     |
+| ---------- | ------------------------------------------------------------------------------------ | ------------------------ |
+| 编辑器组件 | `src/components/TiptapEditor.vue`（1165 行）+ `src/components/tiptap/*`（11 个文件） | `<UltraEditor>`          |
+| UI 依赖    | Element Plus + vue-advanced-cropper                                                  | 无                       |
+| 上传       | 组件内写死 `axios.post('/api-blog/upload/image')`                                    | 注入 `upload` 函数       |
+| 阅读态样式 | `editorView.css`（262 行，手抄一份编辑态样式）                                       | 复用 SDK 的 `ue-content` |
+| 内容绑定   | `ref.getHTML()` 拉取 + `watch(props.content)` 回灌                                   | `v-model`                |
 
 `package.json` 净减 11 个依赖（9 个 `@tiptap/*`、`lowlight`、`vue-advanced-cropper`），换成 2 个 `@ultra-editor/*`。
 
@@ -95,9 +95,12 @@ SDK 只认 `--ue-*`。映射到你自己的 token，编辑器就跟着你的主�
 
 > **⚠️ `--ue-primary-rgb` 不能直接 alias。**
 > SDK 用 `rgb(var(--ue-primary-rgb) / 8%)` 算透明度，要求**空格分隔**（`81 165 220`）。多数设计系统里的 `--xxx-rgb` 是逗号分隔的，直接 alias 会展开成非法的 `rgb(81, 165, 220 / 8%)`，**静默**变透明 —— 悬停底色、单元格高亮、聚焦光晕会全部消失且不报错。用空格重写一遍：
+>
 > ```css
 > --ue-primary-rgb: 81 165 220;
-> [data-theme='dark'] { --ue-primary-rgb: 111 192 239; }
+> [data-theme='dark'] {
+>   --ue-primary-rgb: 111 192 239;
+> }
 > ```
 >
 > 这一条我们自己就踩了。
@@ -141,10 +144,15 @@ SDK 和宿主项目是两个独立仓库时，用 `link:`：
 resolve: {
   dedupe: [
     'vue',
-    '@tiptap/core', '@tiptap/pm', '@tiptap/vue-3',
-    'prosemirror-model', 'prosemirror-state', 'prosemirror-view',
-    'prosemirror-transform', 'prosemirror-tables'
-  ]
+    '@tiptap/core',
+    '@tiptap/pm',
+    '@tiptap/vue-3',
+    'prosemirror-model',
+    'prosemirror-state',
+    'prosemirror-view',
+    'prosemirror-transform',
+    'prosemirror-tables'
+  ];
 }
 ```
 

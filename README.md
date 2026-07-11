@@ -67,7 +67,7 @@ import { createAnthropicProvider } from '@ultra-editor/core/providers/anthropic'
 
 // OpenAI 协议兼容 —— DeepSeek / Kimi / 通义 / Ollama / vLLM 都能直接用
 const provider = createOpenAIProvider({
-  baseURL: '/api/ai',   // 指向你自己的后端代理
+  baseURL: '/api/ai', // 指向你自己的后端代理
   model: 'deepseek-chat'
 });
 ```
@@ -81,10 +81,10 @@ const provider = createOpenAIProvider({
 
 ### AI 的三条路径
 
-| 路径 | 触发 | 行为 |
-|------|------|------|
-| **斜杠命令** | 输入 `/` | 命令面板，普通块与 AI 动作并列 |
-| **选区气泡** | 选中文字 | 润色 / 翻译 / 总结 / 改写 / 扩写 / 缩写 / 修正语法 / 调整语气 / 自定义指令 |
+| 路径         | 触发       | 行为                                                                                     |
+| ------------ | ---------- | ---------------------------------------------------------------------------------------- |
+| **斜杠命令** | 输入 `/`   | 命令面板，普通块与 AI 动作并列                                                           |
+| **选区气泡** | 选中文字   | 润色 / 翻译 / 总结 / 改写 / 扩写 / 缩写 / 修正语法 / 调整语气 / 自定义指令               |
 | **幽灵补全** | 停止输入后 | 灰色行内建议，`Tab` 接受，`Esc` 忽略（**默认关闭**，因为它会在你没主动要求时消耗 token） |
 
 生成过程随时可以**停止**、**重试**、**丢弃**。
@@ -100,10 +100,7 @@ type UploadHandler = (file: Blob, filename?: string) => Promise<string>;
 ```
 
 ```vue
-<UltraEditor
-  v-model="html"
-  :upload="(blob, name) => myApi.upload(blob, name).then(r => r.url)"
-/>
+<UltraEditor v-model="html" :upload="(blob, name) => myApi.upload(blob, name).then((r) => r.url)" />
 ```
 
 不传 `upload` 时会退化成 base64 data URL —— demo 能跑，但**不要用在生产环境**：一张 2MB 的图会变成 2.7MB 的 base64 塞进你的 HTML。
@@ -125,7 +122,7 @@ type UploadHandler = (file: Blob, filename?: string) => Promise<string>;
 深色模式跟随 `prefers-color-scheme`，也可以在 `<html>` 上显式指定：
 
 ```html
-<html data-theme="dark">
+<html data-theme="dark"></html>
 ```
 
 > 主题属性必须放在 `<html>` 上。菜单和对话框会 Teleport 到 `<body>`，放在更深的元素上够不着它们。
@@ -141,7 +138,7 @@ type UploadHandler = (file: Blob, filename?: string) => Promise<string>;
 ```
 
 ```ts
-import '@ultra-editor/core/content.css';   // 只要内容样式，不含编辑器工具栏
+import '@ultra-editor/core/content.css'; // 只要内容样式，不含编辑器工具栏
 ```
 
 这是刻意的设计：编辑态和阅读态是**同一份 CSS**，不存在两边手抄然后慢慢漂移的问题。
@@ -165,10 +162,10 @@ pnpm verify       # lint + type-check + test + build
 
 ## 包结构
 
-| 包 | 作用 |
-|----|------|
-| `@ultra-editor/core` | 框架无关：Tiptap 扩展、AI 引擎、样式表。React / Svelte 适配器可直接复用 |
-| `@ultra-editor/vue` | Vue 3 组件层：`UltraEditor.vue` + 零依赖 UI（对话框 / toast / 取色器 / 裁切器全部自建） |
+| 包                   | 作用                                                                                    |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| `@ultra-editor/core` | 框架无关：Tiptap 扩展、AI 引擎、样式表。React / Svelte 适配器可直接复用                 |
+| `@ultra-editor/vue`  | Vue 3 组件层：`UltraEditor.vue` + 零依赖 UI（对话框 / toast / 取色器 / 裁切器全部自建） |
 
 ## License
 
