@@ -1,0 +1,118 @@
+/*
+ * ultra-editor design tokens.
+ *
+ * Declared on `:root` rather than on `.ultra-editor`, because menus, dialogs and
+ * toasts are teleported to `<body>` — outside the editor element. Scoping the
+ * tokens to the editor would leave every floating surface with no background.
+ *
+ * To theme: override any `--ue-*` on `:root`, or on `.ultra-editor` for an
+ * editor-local override (floating surfaces still read the global values).
+ *
+ * Dark mode follows `prefers-color-scheme`, and an explicit `data-theme` on a
+ * shared ancestor overrides it. Put that attribute on `<html>` — anything deeper
+ * than `<body>` will not reach the teleported surfaces.
+ */
+
+:root {
+  --ue-primary: #5b5bd6;
+  --ue-primary-rgb: 91 91 214;
+  --ue-on-primary: #ffffff;
+  --ue-accent: #1f7ae0;
+
+  --ue-surface: #ffffff;
+  --ue-surface-container: #f4f4f8;
+  --ue-surface-container-high: #ececf2;
+  --ue-hover: rgb(var(--ue-primary-rgb) / 8%);
+
+  --ue-text: #1c1b1f;
+  --ue-text-secondary: #49454f;
+  --ue-text-muted: #79747e;
+  --ue-text-placeholder: #a9a4b3;
+
+  --ue-border: #e2e2ea;
+  --ue-danger: #d3302f;
+  --ue-danger-rgb: 211 48 47;
+
+  --ue-code-bg: #1e2233;
+  --ue-code-fg: #e6e6f0;
+  --ue-inline-code: #b5297f;
+
+  --ue-radius-xs: 4px;
+  --ue-radius-sm: 8px;
+  --ue-radius-md: 12px;
+  --ue-radius-lg: 16px;
+
+  --ue-shadow-1: 0 1px 2px rgb(0 0 0 / 8%), 0 1px 3px rgb(0 0 0 / 6%);
+  --ue-shadow-2: 0 4px 10px rgb(0 0 0 / 10%), 0 1px 3px rgb(0 0 0 / 6%);
+  --ue-shadow-3: 0 10px 30px rgb(0 0 0 / 14%), 0 2px 6px rgb(0 0 0 / 8%);
+  --ue-shadow-glow: 0 0 0 3px rgb(var(--ue-primary-rgb) / 16%);
+
+  --ue-ease: cubic-bezier(0.2, 0, 0, 1);
+  --ue-duration-fast: 120ms;
+  --ue-duration: 200ms;
+
+  --ue-font: inherit;
+  --ue-font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --ue-min-height: 500px;
+  --ue-max-height: 70vh;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ue-primary: #c4c0ff;
+    --ue-primary-rgb: 196 192 255;
+    --ue-on-primary: #23204d;
+    --ue-accent: #7fc4ff;
+
+    --ue-surface: #16151a;
+    --ue-surface-container: #1e1d24;
+    --ue-surface-container-high: #26252d;
+    --ue-hover: rgb(var(--ue-primary-rgb) / 12%);
+
+    --ue-text: #e6e1e9;
+    --ue-text-secondary: #cac4d0;
+    --ue-text-muted: #948f99;
+    --ue-text-placeholder: #6b6673;
+
+    --ue-border: #322f39;
+    --ue-danger: #ff8a80;
+    --ue-danger-rgb: 255 138 128;
+
+    --ue-code-bg: #0f1220;
+    --ue-inline-code: #ff9ad5;
+
+    --ue-shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
+    --ue-shadow-2: 0 4px 10px rgb(0 0 0 / 45%);
+    --ue-shadow-3: 0 10px 30px rgb(0 0 0 / 55%);
+  }
+}
+
+/* Explicit theme beats the media query, in both directions. */
+[data-theme='dark'] {
+  --ue-primary: #c4c0ff;
+  --ue-primary-rgb: 196 192 255;
+  --ue-on-primary: #23204d;
+  --ue-accent: #7fc4ff;
+
+  --ue-surface: #16151a;
+  --ue-surface-container: #1e1d24;
+  --ue-surface-container-high: #26252d;
+  --ue-hover: rgb(var(--ue-primary-rgb) / 12%);
+
+  --ue-text: #e6e1e9;
+  --ue-text-secondary: #cac4d0;
+  --ue-text-muted: #948f99;
+  --ue-text-placeholder: #6b6673;
+
+  --ue-border: #322f39;
+  --ue-danger: #ff8a80;
+  --ue-danger-rgb: 255 138 128;
+
+  --ue-code-bg: #0f1220;
+  --ue-inline-code: #ff9ad5;
+
+  --ue-shadow-1: 0 1px 2px rgb(0 0 0 / 40%);
+  --ue-shadow-2: 0 4px 10px rgb(0 0 0 / 45%);
+  --ue-shadow-3: 0 10px 30px rgb(0 0 0 / 55%);
+}

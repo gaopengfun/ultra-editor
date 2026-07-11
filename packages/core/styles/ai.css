@@ -1,0 +1,161 @@
+@import './tokens.css';
+
+/* AI surfaces: the generation region, ghost text, the bubble menu and its panel. */
+
+/* Streamed region ---------------------------------------------------------- */
+
+.ultra-editor .ue-ai-streamed {
+  background: rgb(var(--ue-primary-rgb) / 10%);
+  border-radius: 3px;
+  box-shadow: inset 0 -1px 0 rgb(var(--ue-primary-rgb) / 35%);
+}
+
+/* Ghost text --------------------------------------------------------------- */
+
+.ue-ghost {
+  color: var(--ue-text-placeholder);
+  pointer-events: none;
+  user-select: none;
+  white-space: pre-wrap;
+}
+
+.ue-ghost__hint {
+  margin-left: 6px;
+  padding: 1px 5px;
+  font-size: 10px;
+  line-height: 1.4;
+  vertical-align: middle;
+  color: var(--ue-text-muted);
+  background: var(--ue-surface-container-high);
+  border: 1px solid var(--ue-border);
+  border-radius: 3px;
+}
+
+/* Bubble menu -------------------------------------------------------------- */
+
+.ue-bubble {
+  position: fixed;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: var(--ue-surface);
+  border: 1px solid var(--ue-border);
+  border-radius: var(--ue-radius-sm);
+  box-shadow: var(--ue-shadow-3);
+}
+
+.ue-bubble__btn {
+  height: 28px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ue-text);
+  background: transparent;
+  border: none;
+  border-radius: var(--ue-radius-xs);
+  cursor: pointer;
+}
+
+.ue-bubble__btn:hover {
+  background: var(--ue-hover);
+  color: var(--ue-primary);
+}
+
+.ue-bubble__btn--ai {
+  color: var(--ue-primary);
+  font-weight: 600;
+}
+
+/* AI panel ----------------------------------------------------------------- */
+
+.ue-ai-panel {
+  position: fixed;
+  z-index: 3050;
+  width: min(560px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  background: var(--ue-surface);
+  border: 1px solid var(--ue-border);
+  border-radius: var(--ue-radius-md);
+  box-shadow: var(--ue-shadow-3);
+  overflow: hidden;
+}
+
+.ue-ai-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ue-primary);
+  background: rgb(var(--ue-primary-rgb) / 6%);
+  border-bottom: 1px solid var(--ue-border);
+}
+
+.ue-ai-panel__spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgb(var(--ue-primary-rgb) / 30%);
+  border-top-color: var(--ue-primary);
+  border-radius: 50%;
+  animation: ue-spin 0.7s linear infinite;
+}
+
+.ue-ai-panel__body {
+  max-height: 280px;
+  padding: 12px;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--ue-text);
+  white-space: pre-wrap;
+}
+
+.ue-ai-panel__body:empty::before {
+  content: attr(data-empty);
+  color: var(--ue-text-muted);
+}
+
+.ue-ai-panel__error {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--ue-danger);
+}
+
+.ue-ai-panel__prompt {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--ue-border);
+}
+
+.ue-ai-panel__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--ue-surface-container);
+  border-top: 1px solid var(--ue-border);
+}
+
+.ue-ai-panel__spacer {
+  flex: 1;
+}
+
+/* Slash menu --------------------------------------------------------------- */
+
+.ue-slash {
+  width: 260px;
+}
+
+.ue-slash .ue-menu__item kbd {
+  font-family: var(--ue-font-mono);
+  font-size: 11px;
+  color: var(--ue-text-muted);
+}

@@ -1,0 +1,55 @@
+import type {
+  AIProvider,
+  AITask,
+  LocaleName,
+  Messages,
+  SlashItem,
+  UploadHandler,
+  ImageFetcher
+} from '@ultra-editor/core';
+
+export type TableAction =
+  | 'rowBefore'
+  | 'rowAfter'
+  | 'colBefore'
+  | 'colAfter'
+  | 'delRow'
+  | 'delCol'
+  | 'merge'
+  | 'split'
+  | 'headerRow'
+  | 'headerCol'
+  | 'delTable';
+
+export interface UltraEditorAIProps {
+  provider?: AIProvider | null;
+  /** Actions offered on the selection bubble. Defaults to the full set. */
+  tasks?: AITask[];
+  /** `/` palette. On by default whenever a provider is present. */
+  slash?: boolean;
+  slashItems?: SlashItem[];
+  /** Idle autocomplete. Off by default — it spends tokens without being asked. */
+  ghostText?: boolean;
+  ghostDelay?: number;
+}
+
+export interface UltraEditorProps {
+  /** Document HTML. Two-way bound. */
+  modelValue?: string;
+  placeholder?: string;
+  editable?: boolean;
+  autofocus?: boolean;
+  locale?: LocaleName;
+  messages?: Partial<Messages>;
+  /** Upload seam. Without it, images inline as data URLs — fine for demos only. */
+  upload?: UploadHandler;
+  fetchImage?: ImageFetcher;
+  maxImageSize?: number;
+  ai?: UltraEditorAIProps;
+  toolbar?: boolean;
+  statusbar?: boolean;
+  minHeight?: string;
+  maxHeight?: string;
+  /** Emit `update:modelValue` at most this often, in ms. 0 disables debouncing. */
+  debounce?: number;
+}

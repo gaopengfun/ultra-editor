@@ -1,0 +1,197 @@
+import { Node as TiptapNode, mergeAttributes } from '@tiptap/core';
+import { isBrowser } from '../utils/env';
+import { createTranslator, type LocaleName, type Messages, type Translator } from '../i18n';
+
+export const MIN_COLUMNS = 1;
+export const MAX_COLUMNS = 5;
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    columnBlock: {
+      /** Insert a 1–5 column card row at the cursor. Refuses when already inside one. */
+      insertColumns: (count?: number) => ReturnType;
+    };
+  }
+}
+
+export interface ColumnBlockOptions {
+  locale: LocaleName;
+  messages: Partial<Messages>;
+}
+
+/** A single card. Not in the `block` group, so it can only exist inside a columnBlock. */
+export const Column = TiptapNode.create({
+  name: 'column',
+  content: 'block+',
+  isolating: true,
+
+  parseHTML() {
+    return [{ tag: 'div.ue-column' }, { tag: 'div.tiptap-column' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['div', mergeAttributes(HTMLAttributes, { class: 'ue-column' }), 0];
+  }
+});
+
+const ICON = {
+  add: '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  sub: '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+  del: '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>'
+};
+
+/**
+ * The column row. Renders as a flex container; in the editor it grows a hover
+ * toolbar for add / remove / delete, drawn by the node view so it never leaks
+ * into the serialised HTML.
+ */
+export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
+  name: 'columnBlock',
+  group: 'block',
+  content: `column{${MIN_COLUMNS},${MAX_COLUMNS}}`,
+  isolating: true,
+  defining: true,
+
+  addOptions() {
+    return {
+      locale: 'zh-CN',
+      messages: {}
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'div.ue-columns' }, { tag: 'div.tiptap-columns' }];
+  },
+
+  renderHTML({ node, HTMLAttributes }) {
+    return [
+      'div',
+      mergeAttributes(HTMLAttributes, {
+        class: 'ue-columns',
+        'data-cols': String(node.childCount)
+      }),
+      0
+    ];
+  },
+
+  addCommands() {
+    return {
+      insertColumns:
+        (count = 2) =>
+        ({ state, commands }) => {
+          const { $from } = state.selection;
+          for (let depth = $from.depth; depth > 0; depth--) {
+            const name = $from.node(depth).type.name;
+            if (name === 'column' || name === 'columnBlock') return false;
+          }
+          const total = Math.min(MAX_COLUMNS, Math.max(MIN_COLUMNS, Math.round(count)));
+          const columnType = state.schema.nodes.column;
+          const columns = [];
+          for (let i = 0; i < total; i++) {
+            const filled = columnType.createAndFill();
+            if (filled) columns.push(filled);
+          }
+          if (!columns.length) return false;
+          return commands.insertContent(this.type.create(null, columns).toJSON());
+        }
+    };
+  },
+
+  addNodeView() {
+    if (!isBrowser()) return null;
+    const t: Translator = createTranslator(this.options.locale, this.options.messages);
+
+    return ({ editor, getPos }) => {
+      const dom = document.createElement('div');
+      dom.className = 'ue-columns-wrapper';
+
+      const toolbar = document.createElement('div');
+      toolbar.className = 'ue-columns__toolbar';
+      toolbar.setAttribute('contenteditable', 'false');
+
+      const contentDOM = document.createElement('div');
+      contentDOM.className = 'ue-columns';
+
+      // Re-resolve on every action: the closed-over node/pos go stale the moment
+      // anything above this block changes.
+      const current = () => {
+        const pos = typeof getPos === 'function' ? getPos() : null;
+        if (pos == null) return null;
+        const node = editor.state.doc.nodeAt(pos);
+        return node && node.type.name === 'columnBlock' ? { pos, node } : null;
+      };
+
+      const makeButton = (title: string, svg: string, danger: boolean, onClick: () => void) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.title = title;
+        button.className = 'ue-columns__btn' + (danger ? ' ue-columns__btn--danger' : '');
+        button.innerHTML = svg;
+        // Without this the editor blurs on mousedown and the selection jumps away
+        // before the click handler ever runs.
+        button.addEventListener('mousedown', (event) => event.preventDefault());
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          onClick();
+        });
+        return button;
+      };
+
+      const addButton = makeButton(t('columns.add'), ICON.add, false, () => {
+        const cur = current();
+        if (!cur || cur.node.childCount >= MAX_COLUMNS) return;
+        const column = editor.schema.nodes.column.createAndFill();
+        if (!column) return;
+        editor.view.dispatch(editor.state.tr.insert(cur.pos + cur.node.nodeSize - 1, column));
+        editor.view.focus();
+      });
+
+      const removeButton = makeButton(t('columns.remove'), ICON.sub, false, () => {
+        const cur = current();
+        if (!cur || cur.node.childCount <= MIN_COLUMNS) return;
+        const last = cur.node.child(cur.node.childCount - 1);
+        const to = cur.pos + cur.node.nodeSize - 1;
+        editor.view.dispatch(editor.state.tr.delete(to - last.nodeSize, to));
+        editor.view.focus();
+      });
+
+      const deleteButton = makeButton(t('columns.delete'), ICON.del, true, () => {
+        const cur = current();
+        if (!cur) return;
+        editor
+          .chain()
+          .focus()
+          .deleteRange({ from: cur.pos, to: cur.pos + cur.node.nodeSize })
+          .run();
+      });
+
+      const syncDisabled = (count: number) => {
+        addButton.disabled = count >= MAX_COLUMNS;
+        removeButton.disabled = count <= MIN_COLUMNS;
+      };
+
+      toolbar.append(addButton, removeButton, deleteButton);
+      dom.append(toolbar, contentDOM);
+
+      const initial = current();
+      contentDOM.setAttribute('data-cols', String(initial?.node.childCount ?? MIN_COLUMNS));
+      syncDisabled(initial?.node.childCount ?? MIN_COLUMNS);
+
+      return {
+        dom,
+        contentDOM,
+        update: (updatedNode) => {
+          if (updatedNode.type.name !== 'columnBlock') return false;
+          contentDOM.setAttribute('data-cols', String(updatedNode.childCount));
+          syncDisabled(updatedNode.childCount);
+          return true;
+        },
+        stopEvent: (event) => toolbar.contains(event.target as Node),
+        ignoreMutation: (mutation) => {
+          if (mutation.type === 'selection') return false;
+          return !contentDOM.contains(mutation.target as Node);
+        }
+      };
+    };
+  }
+});

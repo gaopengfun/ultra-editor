@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "paths": {
+      "@ultra-editor/core": ["../packages/core/src/index.ts"],
+      "@ultra-editor/core/providers/*": ["../packages/core/src/providers/*"],
+      "@ultra-editor/vue": ["../packages/vue/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts", "env.d.ts"]
+}

@@ -1,0 +1,47 @@
+{
+  "name": "@ultra-editor/vue",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AI Native rich text editor for Vue 3, built on Tiptap",
+  "keywords": ["tiptap", "vue", "vue3", "editor", "wysiwyg", "ai", "rich-text"],
+  "license": "MIT",
+  "author": "gaopeng",
+  "homepage": "https://github.com/penggao4/ultra-editor#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/penggao4/ultra-editor.git",
+    "directory": "packages/vue"
+  },
+  "bugs": "https://github.com/penggao4/ultra-editor/issues",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "vite build && pnpm build:types",
+    "build:types": "vue-tsc -p tsconfig.build.json",
+    "type-check": "vue-tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@tiptap/core": "^3.26.1",
+    "@tiptap/pm": "^3.26.1",
+    "@tiptap/suggestion": "^3.26.1",
+    "@tiptap/vue-3": "^3.26.1",
+    "@ultra-editor/core": "workspace:^"
+  },
+  "peerDependencies": {
+    "vue": "^3.4.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

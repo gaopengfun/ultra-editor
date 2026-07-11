@@ -1,0 +1,108 @@
+:root {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.pg-root {
+  min-height: 100vh;
+  background: #f5f5f8;
+  color: #1c1b1f;
+}
+
+[data-theme='dark'] .pg-root {
+  background: #101014;
+  color: #e6e1e9;
+}
+
+.pg {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 20px 96px;
+}
+
+.pg-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.pg-head h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.pg-head small {
+  font-weight: 400;
+  opacity: 0.55;
+}
+
+.pg-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.pg-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.pg-ai-config {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.pg-ai-config input {
+  flex: 1 1 200px;
+  height: 32px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: transparent;
+  border: 1px solid rgb(128 128 128 / 35%);
+  border-radius: 8px;
+}
+
+.pg-output {
+  margin-top: 24px;
+  font-size: 13px;
+}
+
+.pg-output pre {
+  padding: 12px;
+  overflow-x: auto;
+  background: rgb(128 128 128 / 12%);
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.pg-preview {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px dashed rgb(128 128 128 / 35%);
+}
+
+.pg-preview h2 {
+  font-size: 15px;
+  opacity: 0.6;
+}
