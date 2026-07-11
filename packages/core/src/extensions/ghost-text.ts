@@ -1,18 +1,21 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
-import type { AIProvider } from '../ai/types';
+import { resolveProvider, resolveToggle, type AIProviderSource, type Toggle } from '../ai/types';
 import { isAbortError } from '../ai/engine';
 import { isBrowser } from '../utils/env';
 import { isAIStreaming } from './ai-stream';
 
 export interface GhostTextOptions {
-  provider: AIProvider | null;
+  /** Accepts a getter, so a provider that arrives after mount still works. */
+  provider: AIProviderSource;
   /**
    * Off by default. Autocomplete fires on idle, which means it spends tokens
    * without anyone asking it to — that should be a deliberate choice.
+   *
+   * Accepts a getter so the host can toggle it at runtime.
    */
-  enabled: boolean;
+  enabled: Toggle;
   /** Idle time before a completion is requested, in ms. */
   delay: number;
   /** Minimum characters in the current block before suggesting anything. */
@@ -167,8 +170,8 @@ export const GhostText = Extension.create<GhostTextOptions>({
           };
 
           const request = async (editorView: EditorView) => {
-            const provider = options.provider;
-            if (!provider || !options.enabled) return;
+            const provider = resolveProvider(options.provider);
+            if (!provider || !resolveToggle(options.enabled)) return;
             if (!shouldSuggest(editorView.state, options.minChars)) return;
 
             const pos = editorView.state.selection.from;
@@ -212,7 +215,8 @@ export const GhostText = Extension.create<GhostTextOptions>({
 
           const schedule = (editorView: EditorView) => {
             cancel();
-            if (!options.enabled || !options.provider || !editorView.editable) return;
+            if (!resolveToggle(options.enabled) || !resolveProvider(options.provider)) return;
+            if (!editorView.editable) return;
             if (!shouldSuggest(editorView.state, options.minChars)) return;
             timer = setTimeout(() => void request(editorView), options.delay);
           };

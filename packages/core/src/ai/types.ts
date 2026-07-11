@@ -37,6 +37,28 @@ export interface AIProvider {
   stream(request: AIRequest, signal: AbortSignal): AsyncIterable<string>;
 }
 
+/**
+ * A provider, or a getter for one.
+ *
+ * Extensions are built once when the editor is created, but a host's provider
+ * often arrives later (a config fetch, a user toggling a setting). Accepting a
+ * getter lets the extension read the current value on every use instead of
+ * freezing whatever existed at construction time.
+ */
+export type AIProviderSource = AIProvider | null | (() => AIProvider | null | undefined);
+
+export type Toggle = boolean | (() => boolean);
+
+export function resolveProvider(source: AIProviderSource | undefined): AIProvider | null {
+  if (typeof source === 'function') return source() ?? null;
+  return source ?? null;
+}
+
+export function resolveToggle(toggle: Toggle | undefined, fallback = false): boolean {
+  if (typeof toggle === 'function') return toggle();
+  return toggle ?? fallback;
+}
+
 export type AIStatus = 'idle' | 'streaming' | 'done' | 'error' | 'aborted';
 
 export interface AIRunHandlers {

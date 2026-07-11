@@ -153,6 +153,14 @@ export interface SlashCommandOptions {
   render: SuggestionOptions<SlashItem>['render'];
   /** Match items by label too; the adapter passes a locale-aware resolver. */
   labelOf: (item: SlashItem) => string;
+  /**
+   * Whether AI entries should appear. A getter, not a boolean: the palette is
+   * built once, but a provider can show up later.
+   *
+   * The palette itself does not depend on AI — `/table`, `/h1` and friends work
+   * in an editor with no provider at all; only the AI group hides.
+   */
+  hasAI: () => boolean;
 }
 
 /**
@@ -170,7 +178,8 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
       items: DEFAULT_SLASH_ITEMS,
       onAI: () => {},
       render: () => ({}),
-      labelOf: (item) => item.key
+      labelOf: (item) => item.key,
+      hasAI: () => false
     };
   },
 
@@ -186,9 +195,13 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
         startOfLine: false,
 
         items: ({ query }) => {
+          const pool = options.hasAI()
+            ? options.items
+            : options.items.filter((item) => item.group !== 'ai');
+
           const needle = query.trim().toLowerCase();
-          if (!needle) return options.items;
-          return options.items.filter((item) => {
+          if (!needle) return pool;
+          return pool.filter((item) => {
             if (item.key.toLowerCase().includes(needle)) return true;
             if (options.labelOf(item).toLowerCase().includes(needle)) return true;
             return item.keywords.some((keyword) => keyword.toLowerCase().includes(needle));

@@ -17,19 +17,25 @@ import { GhostText } from './extensions/ghost-text';
 import { SlashCommand, DEFAULT_SLASH_ITEMS, type SlashCommandOptions } from './extensions/slash-command';
 import { resolveUploadOptions, type UploadOptions } from './upload';
 import { createTranslator, type LocaleName, type Messages } from './i18n';
-import type { AIProvider } from './ai/types';
+import { resolveProvider, type AIProviderSource, type Toggle } from './ai/types';
 
 export interface UltraKitAIOptions {
-  /** Without a provider every AI surface stays hidden — the editor still works. */
-  provider?: AIProvider | null;
+  /**
+   * Without a provider every AI surface stays hidden — the editor still works.
+   * Pass a getter if the provider is resolved after the editor is created.
+   */
+  provider?: AIProviderSource;
   /**
    * The `/` palette. Needs a renderer, which only a framework adapter can
    * supply, so core skips the extension entirely when one isn't given.
+   *
+   * Note the palette does NOT require AI: `/table`, `/h1` and friends work with
+   * no provider configured; only the AI group hides itself.
    */
   slash?: Partial<SlashCommandOptions> & { enabled?: boolean };
   /** Idle autocomplete. Off unless explicitly enabled — it spends tokens unprompted. */
   ghostText?: {
-    enabled?: boolean;
+    enabled?: Toggle;
     delay?: number;
     minChars?: number;
     contextLength?: number;
@@ -135,33 +141,39 @@ export function createUltraKit(options: UltraKitOptions = {}): Extensions {
   extensions.push(AIStream);
 
   const ai = options.ai;
-  if (ai?.provider) {
-    const slash = ai.slash;
-    if (slash?.render && slash.enabled !== false) {
-      extensions.push(
-        SlashCommand.configure({
-          items: slash.items ?? DEFAULT_SLASH_ITEMS,
-          onAI: slash.onAI ?? (() => {}),
-          labelOf: slash.labelOf ?? ((item) => t(item.labelKey)),
-          render: slash.render
-        })
-      );
-    }
 
+  // The palette is registered whenever a renderer exists — it is a block-insertion
+  // tool first and an AI surface second, so gating it on a provider would take
+  // `/table` away from every editor that has no AI configured.
+  const slash = ai?.slash;
+  if (slash?.render && slash.enabled !== false) {
+    extensions.push(
+      SlashCommand.configure({
+        items: slash.items ?? DEFAULT_SLASH_ITEMS,
+        onAI: slash.onAI ?? (() => {}),
+        labelOf: slash.labelOf ?? ((item) => t(item.labelKey)),
+        hasAI: slash.hasAI ?? (() => !!resolveProvider(ai?.provider)),
+        render: slash.render
+      })
+    );
+  }
+
+  // Registered even when currently disabled: `enabled` and `provider` are read
+  // through getters on every idle tick, so a host can switch autocomplete on at
+  // runtime without rebuilding the editor.
+  if (ai) {
     const ghost = ai.ghostText;
-    if (ghost?.enabled) {
-      extensions.push(
-        GhostText.configure({
-          provider: ai.provider,
-          enabled: true,
-          delay: ghost.delay ?? 800,
-          minChars: ghost.minChars ?? 8,
-          contextLength: ghost.contextLength ?? 2000,
-          locale: options.locale ?? 'zh-CN',
-          hint: ghost.hint ?? t('ai.ghostHint')
-        })
-      );
-    }
+    extensions.push(
+      GhostText.configure({
+        provider: ai.provider ?? null,
+        enabled: ghost?.enabled ?? false,
+        delay: ghost?.delay ?? 800,
+        minChars: ghost?.minChars ?? 8,
+        contextLength: ghost?.contextLength ?? 2000,
+        locale: options.locale ?? 'zh-CN',
+        hint: ghost?.hint ?? t('ai.ghostHint')
+      })
+    );
   }
 
   return extensions;

@@ -132,8 +132,9 @@ const editor = useEditor({
     locale: props.locale,
     messages: props.messages,
     upload: {
-      upload: props.upload,
-      fetchImage: props.fetchImage,
+      // Delegated through the computed so a handler swapped in after mount is honoured.
+      upload: (file, filename) => upload.value.upload(file, filename),
+      fetchImage: (src) => upload.value.fetchImage(src),
       maxSize: props.maxImageSize
     },
     onUploadError: (error) => {
@@ -146,26 +147,28 @@ const editor = useEditor({
             : t.value('image.uploadFailed');
       toasts.error(message);
     },
-    ai: hasAI.value
-      ? {
-          provider: provider.value,
-          slash:
-            props.ai?.slash === false
-              ? { enabled: false }
-              : {
-                  enabled: true,
-                  items: props.ai?.slashItems,
-                  onAI: (task) => ai.start(task),
-                  labelOf: (item) => t.value(item.labelKey),
-                  render: slashRender
-                },
-          ghostText: {
-            enabled: props.ai?.ghostText === true,
-            delay: props.ai?.ghostDelay,
-            hint: t.value('ai.ghostHint')
-          }
-        }
-      : undefined
+    // Everything dynamic is passed as a getter. The extension list is built once,
+    // but the provider may arrive later and the ghost-text toggle can flip at any
+    // time — freezing today's values here would make both silently inert.
+    ai: {
+      provider: () => provider.value,
+      slash:
+        props.ai?.slash === false
+          ? { enabled: false }
+          : {
+              enabled: true,
+              items: props.ai?.slashItems,
+              onAI: (task) => ai.start(task),
+              labelOf: (item) => t.value(item.labelKey),
+              hasAI: () => hasAI.value,
+              render: slashRender
+            },
+      ghostText: {
+        enabled: () => props.ai?.ghostText === true,
+        delay: props.ai?.ghostDelay,
+        hint: t.value('ai.ghostHint')
+      }
+    }
   }),
   editorProps: {
     attributes: {
