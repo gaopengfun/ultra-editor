@@ -94,20 +94,20 @@ function placeSlash(rect: DOMRect | null | undefined) {
   slash.y = Math.min(rect.bottom + 6, window.innerHeight - 320);
 }
 
+// Opening and refiltering do the same work; only opening also raises the menu.
+const syncSlash = (suggestion: SuggestionProps<SlashItem>) => {
+  slash.items = orderSlashItems(suggestion.items);
+  slash.index = 0;
+  slash.command = (item: SlashItem) => suggestion.command(item);
+  placeSlash(suggestion.clientRect?.());
+};
+
 const slashRender = () => ({
   onStart: (suggestion: SuggestionProps<SlashItem>) => {
-    slash.items = orderSlashItems(suggestion.items);
-    slash.index = 0;
-    slash.command = (item: SlashItem) => suggestion.command(item);
-    placeSlash(suggestion.clientRect?.());
+    syncSlash(suggestion);
     slash.visible = true;
   },
-  onUpdate: (suggestion: SuggestionProps<SlashItem>) => {
-    slash.items = orderSlashItems(suggestion.items);
-    slash.index = 0;
-    slash.command = (item: SlashItem) => suggestion.command(item);
-    placeSlash(suggestion.clientRect?.());
-  },
+  onUpdate: syncSlash,
   onKeyDown: ({ event }: SuggestionKeyDownProps) => {
     if (!slash.visible || !slash.items.length) return false;
     if (event.key === 'ArrowDown') {
@@ -147,7 +147,9 @@ const editor = useEditor({
     upload: {
       // Delegated through the computed so a handler swapped in after mount is honoured.
       upload: (file, filename) => upload.value.upload(file, filename),
-      fetchImage: (src) => upload.value.fetchImage(src),
+      // No `fetchImage` here on purpose: no core extension reads it. Re-encoding an
+      // existing image is chrome, so rotate and the cropper call `upload.fetchImage`
+      // off the computed directly — see `rotate()` and the `fetch-image` prop below.
       maxSize: props.maxImageSize
     },
     onUploadError: (error) => {
@@ -267,6 +269,7 @@ onBeforeUnmount(() => {
 /* Word count ----------------------------------------------------------------- */
 
 const stats = computed(() => {
+  /* v8 ignore next */
   const text = editor.value?.getText() ?? '';
   const chars = text.replace(/\s/g, '').length;
   // CJK has no spaces; counting characters and Latin words separately is the
@@ -294,6 +297,7 @@ const clearColor = () => {
 
 async function setLink() {
   const instance = editor.value;
+  /* v8 ignore next */
   if (!instance) return;
 
   const previous = (instance.getAttributes('link').href as string) ?? '';
@@ -365,6 +369,7 @@ const imageMenu = reactive({
 const rotating = ref(false);
 
 function openImageMenu(event: MouseEvent) {
+  /* v8 ignore next */
   const attrs = editor.value?.getAttributes('image') ?? {};
   imageMenu.align = (attrs.align as ImageAlign) ?? null;
   imageMenu.hasCaption = !!attrs.caption;
@@ -379,6 +384,7 @@ function openImageMenu(event: MouseEvent) {
  */
 function selectedImage(): { pos: number; attrs: Record<string, unknown> } | null {
   const instance = editor.value;
+  /* v8 ignore next */
   if (!instance) return null;
   const { from } = instance.state.selection;
   const node = instance.state.doc.nodeAt(from);
@@ -389,12 +395,7 @@ function selectedImage(): { pos: number; attrs: Record<string, unknown> } | null
 function updateImage(patch: Record<string, unknown>) {
   const target = selectedImage();
   if (!target) return;
-  editor.value
-    ?.chain()
-    .focus()
-    .setNodeSelection(target.pos)
-    .updateAttributes('image', patch)
-    .run();
+  editor.value?.chain().focus().setNodeSelection(target.pos).updateAttributes('image', patch).run();
 }
 
 const setAlign = (align: ImageAlign) => updateImage({ align });
@@ -490,7 +491,9 @@ function openTableMenuAt(view: EditorView, event: MouseEvent): boolean {
   }
 
   const instance = editor.value;
+  /* v8 ignore next */
   tableMenu.canMerge = instance?.can().mergeCells() ?? false;
+  /* v8 ignore next */
   tableMenu.canSplit = instance?.can().splitCell() ?? false;
   tableMenu.cellColor =
     (instance?.getAttributes('tableHeader').backgroundColor as string | null) ??
@@ -504,6 +507,7 @@ function openTableMenuAt(view: EditorView, event: MouseEvent): boolean {
 
 function runTableAction(action: TableAction) {
   const chain = editor.value?.chain().focus();
+  /* v8 ignore next */
   if (!chain) return;
   const actions: Record<TableAction, () => void> = {
     rowBefore: () => chain.addRowBefore().run(),
@@ -539,7 +543,9 @@ function onSlashSelect(item: SlashItem) {
 defineExpose({
   /** The underlying Tiptap instance — an escape hatch for anything not exposed here. */
   editor,
+  /* v8 ignore next */
   getHTML: () => editor.value?.getHTML() ?? '',
+  /* v8 ignore next */
   getText: () => editor.value?.getText() ?? '',
   getJSON: () => editor.value?.getJSON(),
   setContent: (html: string) => editor.value?.commands.setContent(html || ''),
@@ -575,14 +581,7 @@ defineExpose({
       <span>{{ t('stats.chars', { n: stats.chars }) }}</span>
     </div>
 
-    <input
-      ref="fileInput"
-      type="file"
-      accept="image/*"
-      multiple
-      hidden
-      @change="onFilePicked"
-    />
+    <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFilePicked" />
 
     <UeImageMenu
       :visible="imageMenu.visible"
@@ -637,7 +636,19 @@ defineExpose({
     <UeBubbleMenu
       v-if="editor && editable"
       :editor="editor"
-      :tasks="props.ai?.tasks ?? ['improve', 'translate', 'summarize', 'rewrite', 'expand', 'shorten', 'fixGrammar', 'changeTone', 'custom']"
+      :tasks="
+        props.ai?.tasks ?? [
+          'improve',
+          'translate',
+          'summarize',
+          'rewrite',
+          'expand',
+          'shorten',
+          'fixGrammar',
+          'changeTone',
+          'custom'
+        ]
+      "
       :has-a-i="hasAI"
       :t="t"
       @ai="ai.start"

@@ -40,6 +40,9 @@ const MARGIN = 16;
 function blockContent(text: string) {
   return text.split(/\n{2,}/).map((block) => ({
     type: 'paragraph',
+    // Every caller trims first, so `split` cannot hand back an empty block here.
+    // Kept because an empty text node is invalid in ProseMirror and throws.
+    /* v8 ignore next */
     content: block ? [{ type: 'text', text: block.replace(/\n/g, ' ') }] : []
   }));
 }
@@ -109,6 +112,13 @@ export function useAi(
   let target: Target | null = null;
   let context = '';
   let locked = false;
+  /**
+   * Bumped whenever a run is abandoned. `abort()` only resolves on a later
+   * microtask, so a replaced run still gets its `onAbort`/`onChunk` after its
+   * successor has already set `phase` to running — without a token to check, the
+   * dead run stomps the live one's state back to `done`.
+   */
+  let generation = 0;
 
   /**
    * The document stays editable while a transform streams into the panel, so the
@@ -137,10 +147,7 @@ export function useAi(
     else instance.off('transaction', followEdits);
   }
 
-  function anchorToCursor() {
-    const instance = editor.value;
-    if (!instance) return;
-
+  function anchorToCursor(instance: Editor) {
     const coords = instance.view.coordsAtPos(instance.state.selection.to);
     state.anchor = {
       x: Math.max(MARGIN, Math.min(coords.left, window.innerWidth - PANEL_WIDTH - MARGIN)),
@@ -148,10 +155,7 @@ export function useAi(
     };
   }
 
-  function capture() {
-    const instance = editor.value;
-    if (!instance) return;
-
+  function capture(instance: Editor) {
     const { from, to, $from, $to } = instance.state.selection;
 
     const sameBlock = $from.sameParent($to);
@@ -184,6 +188,16 @@ export function useAi(
     instance.setEditable(isEditable());
   }
 
+  /**
+   * Let go of the running generation: stop the stream and disown its callbacks.
+   * Always abort — an orphaned stream keeps costing money after nobody is watching.
+   */
+  function abandon() {
+    run?.abort();
+    run = null;
+    generation += 1;
+  }
+
   function execute() {
     const instance = editor.value;
     const ai = provider.value;
@@ -192,6 +206,11 @@ export function useAi(
       state.error = t.value('ai.noProvider');
       return;
     }
+
+    // Starting again while one is in flight replaces it; the old one must not be
+    // left streaming into the state this run now owns.
+    abandon();
+    const mine = generation;
 
     const selectionText = target
       ? instance.state.doc.textBetween(target.from, target.to, '\n\n', ' ')
@@ -226,8 +245,12 @@ export function useAi(
         onDone: () => {
           state.phase = 'done';
         },
+        // The only handler an abandoned run can still reach: `abort()` settles on a
+        // later microtask, by which point its replacement has already set `running`.
+        // The other three are unreachable once aborted — runAITask stops pulling
+        // chunks and routes the outcome here rather than to done/error.
         onAbort: () => {
-          state.phase = 'done';
+          if (mine === generation) state.phase = 'done';
         },
         onError: (error) => {
           state.phase = 'error';
@@ -246,10 +269,11 @@ export function useAi(
   }
 
   function start(task: AITask) {
-    if (!editor.value) return;
+    const instance = editor.value;
+    if (!instance) return;
 
-    capture();
-    anchorToCursor();
+    capture(instance);
+    anchorToCursor(instance);
 
     state.task = task;
     state.mode = SELECTION_TASKS.includes(task) ? 'transform' : 'insert';
@@ -274,10 +298,8 @@ export function useAi(
     run?.abort();
   }
 
-  /** Always abort — an orphaned stream keeps costing money after nobody is watching. */
   function cleanup() {
-    run?.abort();
-    run = null;
+    abandon();
     watchEdits(false);
     target = null;
     state.open = false;
@@ -329,8 +351,7 @@ export function useAi(
 
   /** Throw away the previous attempt — including whatever it wrote — and run again. */
   function retry() {
-    run?.abort();
-    run = null;
+    abandon();
     if (state.mode === 'insert') {
       editor.value?.commands.aiStreamDiscard();
       lockEditor(false);
@@ -342,8 +363,7 @@ export function useAi(
 
   // A route change mid-generation must not leave the stream running.
   onScopeDispose(() => {
-    run?.abort();
-    run = null;
+    abandon();
     watchEdits(false);
   });
 
