@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import UeIcon from './UeIcon.vue';
 import type { AIController } from '../composables/useAi';
 import type { MessageKey, Translator } from '@ultra-editor/core';
@@ -8,6 +8,25 @@ const props = defineProps<{ controller: AIController; t: Translator }>();
 
 const input = ref<HTMLInputElement>();
 const state = computed(() => props.controller.state);
+
+// Escape dismisses the panel from any phase. The prompt input owns it while
+// shown (it also stops the keystroke reaching the document), so only the
+// running / done / error phases need a global handler.
+const onKey = (event: KeyboardEvent) => {
+  if (event.key !== 'Escape' || state.value.phase === 'prompt') return;
+  event.preventDefault();
+  props.controller.discard();
+};
+
+watch(
+  () => state.value.open,
+  (open) => {
+    if (open) window.addEventListener('keydown', onKey, true);
+    else window.removeEventListener('keydown', onKey, true);
+  }
+);
+
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
 
 const TASK_LABEL: Record<string, MessageKey> = {
   continue: 'ai.continue',
