@@ -2,12 +2,12 @@ import type { Extensions } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { Color } from '@tiptap/extension-color';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import Placeholder from '@tiptap/extension-placeholder';
 import { Table } from '@tiptap/extension-table';
 import { createLowlight, common } from 'lowlight';
 
 import { ImageFigure, DEFAULT_IMAGE_RESIZE } from './extensions/image-figure';
+import { UltraCodeBlock } from './extensions/code-block';
 import { Column, ColumnBlock } from './extensions/columns';
 import { ColorTableCell, ColorTableHeader } from './extensions/table-cells';
 import { ResizableTableRow } from './extensions/table-row';
@@ -140,7 +140,11 @@ export function createUltraKit(options: UltraKitOptions = {}): Extensions {
 
   if (features.codeBlock) {
     extensions.push(
-      CodeBlockLowlight.configure({ lowlight: options.lowlight ?? createLowlight(common) })
+      UltraCodeBlock.configure({
+        lowlight: options.lowlight ?? createLowlight(common),
+        locale: options.locale ?? 'zh-CN',
+        messages: options.messages ?? {}
+      })
     );
   }
 

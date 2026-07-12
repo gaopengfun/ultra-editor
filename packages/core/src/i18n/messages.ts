@@ -23,6 +23,12 @@ export const zhCN = {
   'toolbar.redo': '重做',
   'toolbar.ai': 'AI 助手',
 
+  // code block
+  'codeBlock.language': '代码语言',
+  'codeBlock.plain': '纯文本',
+  'codeBlock.copy': '复制',
+  'codeBlock.copied': '已复制',
+
   // link dialog
   'link.title': '插入链接',
   'link.label': '请输入链接地址',
@@ -140,6 +146,11 @@ export const en: Messages = {
   'toolbar.undo': 'Undo',
   'toolbar.redo': 'Redo',
   'toolbar.ai': 'AI assistant',
+
+  'codeBlock.language': 'Language',
+  'codeBlock.plain': 'Plain text',
+  'codeBlock.copy': 'Copy',
+  'codeBlock.copied': 'Copied',
 
   'link.title': 'Insert link',
   'link.label': 'Enter the URL',

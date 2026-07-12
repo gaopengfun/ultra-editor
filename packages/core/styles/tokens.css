@@ -35,6 +35,9 @@
 
   --ue-code-bg: #1e2233;
   --ue-code-fg: #e6e6f0;
+  /* The code slab stays dark in both themes, so its chrome cannot read from the
+     theme's text tokens — it tints the slab's own foreground instead. */
+  --ue-code-fg-rgb: 230 230 240;
   --ue-inline-code: #b5297f;
 
   --ue-radius-xs: 4px;

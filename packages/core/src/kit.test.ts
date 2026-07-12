@@ -75,6 +75,58 @@ describe('columns', () => {
   });
 });
 
+describe('code block', () => {
+  it('keeps the chosen language in the serialised HTML', () => {
+    editor.commands.setContent('<pre><code class="language-typescript">const a = 1</code></pre>');
+    const html = editor.getHTML();
+
+    expect(html).toContain('<pre><code class="language-typescript">');
+    expect(html).toContain('const a = 1');
+  });
+
+  it('holds more than one line', () => {
+    editor.commands.setContent('<pre><code>a\nb</code></pre>');
+    expect(editor.getHTML()).toContain('a\nb');
+  });
+
+  it('leaves the editing chrome out of the serialised HTML', () => {
+    editor.commands.setContent('<pre><code>x</code></pre>');
+    const html = editor.getHTML();
+
+    // The language picker and copy button are a node view: they exist while
+    // writing and must never reach a published article.
+    expect(html).not.toContain('ue-codeblock');
+    expect(html).not.toContain('<select');
+    expect(html).toContain('<pre><code>x</code></pre>');
+  });
+
+  it('draws the picker and the copy button on the block while editing', () => {
+    editor.commands.setContent('<pre><code class="language-css">a{}</code></pre>');
+    const bar = editor.view.dom.querySelector('.ue-codeblock__bar');
+
+    expect(bar).not.toBeNull();
+    expect(bar?.querySelector('.ue-codeblock__lang')?.textContent).toBe('CSS');
+  });
+
+  it('picks a language from its own menu rather than a native select', () => {
+    editor.commands.setContent('<pre><code>a</code></pre>');
+    const trigger = editor.view.dom.querySelector<HTMLButtonElement>('.ue-codeblock__lang');
+    trigger?.click();
+
+    const list = document.querySelector('.ue-codeblock__langs');
+    expect(list).not.toBeNull();
+
+    const rust = Array.from(list?.querySelectorAll<HTMLButtonElement>('.ue-menu__item') ?? []).find(
+      (item) => item.textContent === 'Rust'
+    );
+    rust?.click();
+
+    expect(editor.getHTML()).toContain('class="language-rust"');
+    // The list is teleported to <body>; picking has to take it back down again.
+    expect(document.querySelector('.ue-codeblock__langs')).toBeNull();
+  });
+});
+
 describe('table', () => {
   it('serialises a cell background with a readable text colour', () => {
     editor.commands.insertTable({ rows: 2, cols: 2, withHeaderRow: true });

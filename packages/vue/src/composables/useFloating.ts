@@ -42,11 +42,22 @@ export function useFloating(
     position.value = { left, top };
   }
 
+  // A flyout opened *from* a floating surface (the table menu's colour panel) is
+  // teleported to <body> too, so `contains` reports it as "outside" and both the
+  // click-away and the Escape would close the surface underneath it. Treat any
+  // event that originates inside a flyout as belonging to whoever opened it: the
+  // flyout closes itself, its opener stays put.
+  const inFlyout = (event: Event) => {
+    const target = event.target as HTMLElement | null;
+    const flyout = target?.closest?.('[data-ue-flyout]');
+    return !!flyout && flyout !== element.value;
+  };
+
   const onPointerDown = (event: MouseEvent) => {
-    if (element.value && !element.value.contains(event.target as Node)) close();
+    if (element.value && !element.value.contains(event.target as Node) && !inFlyout(event)) close();
   };
   const onKey = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') close();
+    if (event.key === 'Escape' && !inFlyout(event)) close();
   };
 
   let frame = 0;
