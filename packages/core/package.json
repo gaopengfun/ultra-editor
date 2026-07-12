@@ -1,9 +1,16 @@
 {
   "name": "@ultra-editor/core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "Framework-agnostic Tiptap extensions and AI engine for ultra-editor",
-  "keywords": ["tiptap", "prosemirror", "editor", "wysiwyg", "ai", "rich-text"],
+  "keywords": [
+    "tiptap",
+    "prosemirror",
+    "editor",
+    "wysiwyg",
+    "ai",
+    "rich-text"
+  ],
   "license": "MIT",
   "author": "gaopeng",
   "homepage": "https://github.com/penggao4/ultra-editor#readme",
@@ -13,7 +20,9 @@
     "directory": "packages/core"
   },
   "bugs": "https://github.com/penggao4/ultra-editor/issues",
-  "sideEffects": ["*.css"],
+  "sideEffects": [
+    "*.css"
+  ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -37,7 +46,11 @@
     "./content.css": "./styles/content.css",
     "./package.json": "./package.json"
   },
-  "files": ["dist", "styles", "CHANGELOG.md"],
+  "files": [
+    "dist",
+    "styles",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "vite build && pnpm build:types",
     "build:types": "tsc -p tsconfig.build.json",

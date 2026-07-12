@@ -1,9 +1,17 @@
 {
   "name": "@ultra-editor/vue",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "AI Native rich text editor for Vue 3, built on Tiptap",
-  "keywords": ["tiptap", "vue", "vue3", "editor", "wysiwyg", "ai", "rich-text"],
+  "keywords": [
+    "tiptap",
+    "vue",
+    "vue3",
+    "editor",
+    "wysiwyg",
+    "ai",
+    "rich-text"
+  ],
   "license": "MIT",
   "author": "gaopeng",
   "homepage": "https://github.com/penggao4/ultra-editor#readme",
@@ -25,7 +33,10 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["dist", "CHANGELOG.md"],
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "build": "vite build && pnpm build:types",
     "build:types": "vue-tsc -p tsconfig.build.json",
