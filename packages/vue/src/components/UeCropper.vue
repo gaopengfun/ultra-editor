@@ -73,7 +73,7 @@ async function load(src: string) {
   try {
     const blob = await (props.fetchImage
       ? props.fetchImage(src)
-      : fetch(src, { credentials: 'include' }).then((response) => response.blob()));
+      : fetch(src, { credentials: 'same-origin' }).then((response) => response.blob()));
     if (token !== loadToken) return;
     objectUrl.value = URL.createObjectURL(blob);
   } catch {
@@ -105,8 +105,12 @@ function reset() {
 }
 
 function turn(direction: 1 | -1) {
-  rotate.value = (((rotate.value + direction * 90) % 360) + 360) % 360 as 0 | 90 | 180 | 270;
+  rotate.value = ((((rotate.value + direction * 90) % 360) + 360) % 360) as 0 | 90 | 180 | 270;
 }
+
+// Unmounting mid-drag (e.g. the editor is torn down while a handle is held)
+// would otherwise strand the document-level mousemove/mouseup listeners.
+let stopDrag: (() => void) | null = null;
 
 /** Drag handles: `move` shifts the box, the corners resize it. */
 function startDrag(event: MouseEvent, handle: 'move' | 'nw' | 'ne' | 'sw' | 'se') {
@@ -147,10 +151,12 @@ function startDrag(event: MouseEvent, handle: 'move' | 'nw' | 'ne' | 'sw' | 'se'
   const onUp = () => {
     document.removeEventListener('mousemove', onMove);
     document.removeEventListener('mouseup', onUp);
+    stopDrag = null;
   };
 
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
+  stopDrag = onUp;
 }
 
 async function confirm() {
@@ -193,7 +199,10 @@ watch(
   }
 );
 
-onBeforeUnmount(revoke);
+onBeforeUnmount(() => {
+  stopDrag?.();
+  revoke();
+});
 </script>
 
 <template>
@@ -213,19 +222,25 @@ onBeforeUnmount(revoke);
           transform: `rotate(${rotate}deg) scale(${flipH ? -1 : 1}, ${flipV ? -1 : 1})`
         }"
       >
-        <img
-          class="ue-crop__img"
-          :src="objectUrl"
-          :style="imageStyle"
-          alt=""
-          @load="onImageLoad"
-        />
+        <img class="ue-crop__img" :src="objectUrl" :style="imageStyle" alt="" @load="onImageLoad" />
 
         <div class="ue-crop__box" :style="cropStyle" @mousedown="startDrag($event, 'move')">
-          <span class="ue-crop__handle ue-crop__handle--nw" @mousedown.stop="startDrag($event, 'nw')" />
-          <span class="ue-crop__handle ue-crop__handle--ne" @mousedown.stop="startDrag($event, 'ne')" />
-          <span class="ue-crop__handle ue-crop__handle--sw" @mousedown.stop="startDrag($event, 'sw')" />
-          <span class="ue-crop__handle ue-crop__handle--se" @mousedown.stop="startDrag($event, 'se')" />
+          <span
+            class="ue-crop__handle ue-crop__handle--nw"
+            @mousedown.stop="startDrag($event, 'nw')"
+          />
+          <span
+            class="ue-crop__handle ue-crop__handle--ne"
+            @mousedown.stop="startDrag($event, 'ne')"
+          />
+          <span
+            class="ue-crop__handle ue-crop__handle--sw"
+            @mousedown.stop="startDrag($event, 'sw')"
+          />
+          <span
+            class="ue-crop__handle ue-crop__handle--se"
+            @mousedown.stop="startDrag($event, 'se')"
+          />
         </div>
       </div>
     </div>
@@ -250,12 +265,7 @@ onBeforeUnmount(revoke);
 
     <template #footer>
       <button type="button" class="ue-btn" @click="close">{{ t('common.cancel') }}</button>
-      <button
-        type="button"
-        class="ue-btn ue-btn--primary"
-        :disabled="exporting"
-        @click="confirm"
-      >
+      <button type="button" class="ue-btn ue-btn--primary" :disabled="exporting" @click="confirm">
         {{ t('common.confirm') }}
       </button>
     </template>

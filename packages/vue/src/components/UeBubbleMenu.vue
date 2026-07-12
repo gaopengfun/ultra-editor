@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { Editor } from '@tiptap/vue-3';
 import UeIcon from './UeIcon.vue';
 import type { AITask, MessageKey, Translator } from '@ultra-editor/core';
@@ -20,6 +20,7 @@ const emit = defineEmits<{ (e: 'ai', task: AITask): void }>();
 const visible = ref(false);
 const rect = ref({ left: 0, top: 0 });
 const menuOpen = ref(false);
+const root = ref<HTMLElement>();
 
 const TASK_LABEL: Record<string, MessageKey> = {
   improve: 'ai.improve',
@@ -62,6 +63,22 @@ function pick(task: AITask) {
   emit('ai', task);
 }
 
+// A click anywhere outside the bubble dismisses it — including its open AI
+// submenu, which `update()` alone leaves stranded (it keeps the bubble alive
+// while the menu is open). The bubble's own buttons use mousedown.prevent, so
+// they never reach here. Capture phase, mirroring UeColorPicker.
+const onOutside = (event: MouseEvent) => {
+  if (root.value && !root.value.contains(event.target as Node)) {
+    menuOpen.value = false;
+    visible.value = false;
+  }
+};
+
+watch(visible, (value) => {
+  if (value) window.addEventListener('mousedown', onOutside, true);
+  else window.removeEventListener('mousedown', onOutside, true);
+});
+
 onMounted(() => {
   props.editor.on('selectionUpdate', update);
   props.editor.on('transaction', update);
@@ -72,6 +89,7 @@ onBeforeUnmount(() => {
   props.editor.off('selectionUpdate', update);
   props.editor.off('transaction', update);
   props.editor.off('blur', update);
+  window.removeEventListener('mousedown', onOutside, true);
 });
 </script>
 
@@ -79,6 +97,7 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div
       v-if="visible"
+      ref="root"
       class="ue-bubble"
       :style="{ left: rect.left + 'px', top: rect.top + 'px', transform: 'translate(-50%, -100%)' }"
     >

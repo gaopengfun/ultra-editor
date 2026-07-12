@@ -169,12 +169,7 @@ export const ImageUpload = Extension.create<ImageUploadOptions>({
   }
 });
 
-function startUpload(
-  view: EditorView,
-  file: File,
-  options: ImageUploadOptions,
-  pos: number
-): void {
+function startUpload(view: EditorView, file: File, options: ImageUploadOptions, pos: number): void {
   const max = formatSize(options.maxSize);
 
   if (!isAcceptedFile(file, options.accept)) {
@@ -192,6 +187,9 @@ function startUpload(
   options
     .upload(file, file.name)
     .then((url) => {
+      // The editor can be torn down while the upload is in flight; dispatching
+      // into a destroyed view throws. Abandon the result quietly.
+      if (view.isDestroyed) return;
       const at = placeholderPos(view, id);
       const tr = view.state.tr.setMeta(uploadKey, { remove: id } satisfies PlaceholderMeta);
       // The placeholder is gone (user undid, or deleted the paragraph) — drop the
@@ -204,9 +202,8 @@ function startUpload(
       view.dispatch(tr.replaceWith(at, at, node));
     })
     .catch(() => {
-      view.dispatch(
-        view.state.tr.setMeta(uploadKey, { remove: id } satisfies PlaceholderMeta)
-      );
+      if (view.isDestroyed) return;
+      view.dispatch(view.state.tr.setMeta(uploadKey, { remove: id } satisfies PlaceholderMeta));
       options.onError?.({ code: 'failed', file, size: formatSize(file.size), max });
     });
 }

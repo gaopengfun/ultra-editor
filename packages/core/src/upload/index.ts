@@ -13,7 +13,7 @@ export const DEFAULT_MAX_IMAGE_SIZE = 5 * 1024 * 1024;
 export interface UploadOptions {
   /** Upload a blob, return its public URL. Defaults to an in-memory data URL. */
   upload?: UploadHandler;
-  /** Fetch an image back as a blob. Defaults to `fetch` with credentials. */
+  /** Fetch an image back as a blob. Defaults to a same-origin `fetch`. */
   fetchImage?: ImageFetcher;
   /** Reject anything larger, in bytes. Default 5 MB. */
   maxSize?: number;
@@ -40,7 +40,11 @@ export const dataUrlUpload: UploadHandler = (file) =>
  * tainted canvas for cross-origin images.
  */
 export const defaultImageFetcher: ImageFetcher = async (src) => {
-  const response = await fetch(src, { credentials: 'include' });
+  // `same-origin`, not `include`: the src comes straight from document content,
+  // so `include` would fire a cookie-bearing cross-origin GET at any URL an
+  // author (or a paste) put in the document. Hosts that need credentials on
+  // their own image host inject a `fetchImage` that opts back in.
+  const response = await fetch(src, { credentials: 'same-origin' });
   if (!response.ok) throw new Error(`fetch-failed: ${response.status}`);
   return response.blob();
 };

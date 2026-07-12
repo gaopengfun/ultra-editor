@@ -5,6 +5,15 @@
  * Yields the raw `data:` payloads, in order, until the stream ends or the
  * signal aborts.
  */
+/** Yield the `data:` payloads carried by one SSE event block. */
+function* dataLines(event: string): Generator<string> {
+  for (const line of event.split(/\r?\n/)) {
+    if (!line.startsWith('data:')) continue;
+    const payload = line.slice(5).trim();
+    if (payload) yield payload;
+  }
+}
+
 export async function* readSSE(response: Response, signal: AbortSignal): AsyncGenerator<string> {
   if (!response.body) throw new Error('ai-no-stream-body');
 
@@ -27,16 +36,16 @@ export async function* readSSE(response: Response, signal: AbortSignal): AsyncGe
       const events = buffer.split(/\r?\n\r?\n/);
       buffer = events.pop() ?? '';
 
-      for (const event of events) {
-        for (const line of event.split(/\r?\n/)) {
-          if (!line.startsWith('data:')) continue;
-          const payload = line.slice(5).trim();
-          if (payload) yield payload;
-        }
-      }
+      for (const event of events) yield* dataLines(event);
 
       if (signal.aborted) break;
     }
+
+    // A lenient server (vLLM, Ollama, a custom proxy) can close the stream right
+    // after the last `data:` with no trailing blank line. Flush the decoder and
+    // drain what's left, or that final delta — often the last sentence — is lost.
+    buffer += decoder.decode();
+    if (!signal.aborted) yield* dataLines(buffer);
   } finally {
     signal.removeEventListener('abort', cancel);
     reader.releaseLock();

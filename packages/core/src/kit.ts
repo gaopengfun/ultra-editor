@@ -14,7 +14,11 @@ import { ResizableTableRow } from './extensions/table-row';
 import { ImageUpload, type UploadError } from './extensions/image-upload';
 import { AIStream } from './extensions/ai-stream';
 import { GhostText } from './extensions/ghost-text';
-import { SlashCommand, DEFAULT_SLASH_ITEMS, type SlashCommandOptions } from './extensions/slash-command';
+import {
+  SlashCommand,
+  DEFAULT_SLASH_ITEMS,
+  type SlashCommandOptions
+} from './extensions/slash-command';
 import { resolveUploadOptions, type UploadOptions } from './upload';
 import { createTranslator, type LocaleName, type Messages } from './i18n';
 import { resolveProvider, type AIProviderSource, type Toggle } from './ai/types';
@@ -88,8 +92,12 @@ export function createUltraKit(options: UltraKitOptions = {}): Extensions {
   const upload = resolveUploadOptions(options.upload);
 
   const extensions: Extensions = [
+    // StarterKit's own code block is always off: when the feature is on we swap
+    // in CodeBlockLowlight below, when it's off there should be no code block at
+    // all. Passing `undefined` here would leave StarterKit's default enabled and
+    // make `features.codeBlock: false` a no-op.
     StarterKit.configure({
-      codeBlock: features.codeBlock ? false : undefined,
+      codeBlock: false,
       link: { openOnClick: false }
     }),
     Placeholder.configure({ placeholder: options.placeholder ?? t('editor.placeholder') })

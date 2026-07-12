@@ -218,7 +218,11 @@ export const AIStream = Extension.create({
             if (!current) return null;
             return {
               from: tr.mapping.map(current.from, -1),
-              to: tr.mapping.map(current.to, 1)
+              to: tr.mapping.map(current.to, 1),
+              // Carry the flag through the mapping: any foreign transaction (a
+              // click's selection change is enough) lands here, and dropping it
+              // would make accept/discard forget to restore the swallowed block.
+              consumedEmptyBlock: current.consumedEmptyBlock
             };
           }
         },
