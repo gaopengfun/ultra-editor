@@ -36,6 +36,9 @@ const onKey = (event: KeyboardEvent) => {
   }
   if (event.key !== 'Tab') return;
   const items = focusables();
+  // The close button is always rendered, so an open panel always holds at least
+  // one focusable — this only guards the indexing below.
+  /* v8 ignore next 4 */
   if (!items.length) {
     event.preventDefault();
     return;

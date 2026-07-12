@@ -109,10 +109,15 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
 
       // The closed-over node and position go stale as soon as anything above this
       // block changes — resolve both on every action instead.
+      // Tiptap always hands a node view a `getPos` function, and a live position
+      // always resolves back to this node — the two fallbacks below only cover a
+      // torn-down view, which already leaves through the `pos == null` arm.
       const current = () => {
+        /* v8 ignore next */
         const pos = typeof getPos === 'function' ? getPos() : null;
         if (pos == null) return null;
         const found = editor.state.doc.nodeAt(pos);
+        /* v8 ignore next */
         return found && found.type.name === node.type.name ? { pos, node: found } : null;
       };
 
@@ -204,6 +209,9 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
       };
 
       function openList() {
+        // The trigger is the only caller and it already picks between open and
+        // close, so this never sees an open list.
+        /* v8 ignore next */
         if (open) return;
         open = true;
         syncOptions();
@@ -320,6 +328,10 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
         dom,
         contentDOM,
         update: (updatedNode) => {
+          // ProseMirror only calls a node view's `update` when the incoming node has
+          // the same type (CustomNodeViewDesc gates on `this.node.type == node.type`
+          // unless the spec opts into `multiType`, which this one does not).
+          /* v8 ignore next */
           if (updatedNode.type !== node.type) return false;
           syncLanguage((updatedNode.attrs.language as string | null) ?? null);
           return true;

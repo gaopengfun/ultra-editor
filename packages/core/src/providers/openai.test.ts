@@ -101,4 +101,20 @@ describe('createOpenAIProvider', () => {
       'ai-request-failed: 401'
     );
   });
+
+  it('sends max_tokens only when a cap is configured', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    const fetch = ((_url: string, init: RequestInit) => {
+      bodies.push(JSON.parse(init.body as string));
+      return Promise.resolve(sseResponse(DONE));
+    }) as unknown as typeof globalThis.fetch;
+
+    await collect(createOpenAIProvider({ fetch, maxTokens: 256 }).stream(request, signal()));
+    await collect(createOpenAIProvider({ fetch }).stream(request, signal()));
+
+    expect(bodies[0].max_tokens).toBe(256);
+    // Absent, not zero or null — the API treats an explicit null as an error, and a
+    // model's own default is a better cap than one we invent.
+    expect(bodies[1]).not.toHaveProperty('max_tokens');
+  });
 });

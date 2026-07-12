@@ -34,7 +34,11 @@ function rowBorderAt(view: EditorView, event: MouseEvent) {
         break;
       }
     }
+    // `posAtDOM` only throws for DOM outside the editor, which the `view.dom.contains`
+    // check above has already ruled out. Kept because it is the documented failure
+    // mode, and a stray row is exactly what this function exists to survive.
   } catch {
+    /* v8 ignore next */
     return null;
   }
   if (rowPos == null) return null;

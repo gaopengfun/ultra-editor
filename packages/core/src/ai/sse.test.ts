@@ -97,6 +97,24 @@ describe('readSSE', () => {
     expect(next.done).toBe(true);
     expect(cancelled).toBe(true);
   });
+
+  it('swallows a reader that fails to cancel rather than raising an unhandled rejection', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: a\n\n'));
+      },
+      cancel() {
+        throw new Error('cancel-failed');
+      }
+    });
+    const controller = new AbortController();
+    const stream = readSSE({ body } as unknown as Response, controller.signal);
+
+    expect((await stream.next()).value).toBe('a');
+    controller.abort();
+
+    expect((await stream.next()).done).toBe(true);
+  });
 });
 
 describe('assertOk', () => {

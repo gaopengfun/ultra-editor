@@ -63,7 +63,11 @@ function shouldSuggest(state: EditorState, minChars: number): boolean {
   if (!(selection instanceof TextSelection) || !selection.empty) return false;
   if (isAIStreaming(state)) return false;
 
+  // For a TextSelection `empty` means anchor and head sit on the same position,
+  // which is exactly when `$cursor` is non-null — so the check above has already
+  // ruled this out. Kept as a type narrowing, not as a case that can happen.
   const { $cursor } = selection as TextSelection;
+  /* v8 ignore next */
   if (!$cursor) return false;
   if (!$cursor.parent.isTextblock) return false;
   if ($cursor.parent.type.name === 'codeBlock') return false;
@@ -107,6 +111,10 @@ export const GhostText = Extension.create<GhostTextOptions>({
           .chain()
           .focus()
           .command(({ tr, dispatch }) => {
+            // Guards the dry run Tiptap performs under `editor.can()`. A keyboard
+            // shortcut is never dry-run, so nothing reaches this with no dispatch —
+            // but a command that mutates during a probe is a trap worth keeping shut.
+            /* v8 ignore else */
             if (dispatch) {
               tr.insertText(suggestion.text, suggestion.pos);
               tr.setMeta(ghostKey, { clear: true } satisfies GhostMeta);
@@ -196,6 +204,10 @@ export const GhostText = Extension.create<GhostTextOptions>({
                 text += chunk;
 
                 // The document may have moved on while the model was thinking.
+                // Belt and braces: moving the cursor sets `selectionSet`, which
+                // drives the view update into `cancel()`, so in practice the abort
+                // check above catches this first.
+                /* v8 ignore next */
                 if (editorView.state.selection.from !== pos) return;
                 if (!text.trim()) continue;
 

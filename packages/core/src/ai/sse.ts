@@ -34,6 +34,9 @@ export async function* readSSE(response: Response, signal: AbortSignal): AsyncGe
       // Events are separated by a blank line; anything after the last one is a
       // partial event and stays in the buffer for the next read.
       const events = buffer.split(/\r?\n\r?\n/);
+      // `split` always yields at least one element, so `pop` cannot come back
+      // empty here — the `??` is for the type, not for a case that can happen.
+      /* v8 ignore next */
       buffer = events.pop() ?? '';
 
       for (const event of events) yield* dataLines(event);

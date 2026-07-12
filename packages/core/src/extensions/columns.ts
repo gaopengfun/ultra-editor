@@ -89,8 +89,13 @@ export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
           const columns = [];
           for (let i = 0; i < total; i++) {
             const filled = columnType.createAndFill();
+            /* v8 ignore next */
             if (filled) columns.push(filled);
           }
+          // `column` holds `block+`, which `createAndFill` always satisfies with an
+          // empty paragraph — so neither guard above can fire. Both are here to keep
+          // a schema change from silently inserting a malformed block.
+          /* v8 ignore next */
           if (!columns.length) return false;
           return commands.insertContent(this.type.create(null, columns).toJSON());
         }
@@ -114,10 +119,15 @@ export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
 
       // Re-resolve on every action: the closed-over node/pos go stale the moment
       // anything above this block changes.
+      // Tiptap always hands a node view a `getPos` function, and a live position
+      // always resolves back to this node — the two fallbacks below only cover a
+      // torn-down view, which already leaves through the `pos == null` arm.
       const current = () => {
+        /* v8 ignore next */
         const pos = typeof getPos === 'function' ? getPos() : null;
         if (pos == null) return null;
         const node = editor.state.doc.nodeAt(pos);
+        /* v8 ignore next */
         return node && node.type.name === 'columnBlock' ? { pos, node } : null;
       };
 
@@ -141,6 +151,7 @@ export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
         const cur = current();
         if (!cur || cur.node.childCount >= MAX_COLUMNS) return;
         const column = editor.schema.nodes.column.createAndFill();
+        /* v8 ignore next */
         if (!column) return;
         editor.view.dispatch(editor.state.tr.insert(cur.pos + cur.node.nodeSize - 1, column));
         editor.view.focus();
@@ -173,14 +184,22 @@ export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
       toolbar.append(addButton, removeButton, deleteButton);
       dom.append(toolbar, contentDOM);
 
+      // The node is provably in the document while its own view is being built, so
+      // the `??` fallbacks are for the type, not for a case that can happen.
       const initial = current();
+      /* v8 ignore next */
       contentDOM.setAttribute('data-cols', String(initial?.node.childCount ?? MIN_COLUMNS));
+      /* v8 ignore next */
       syncDisabled(initial?.node.childCount ?? MIN_COLUMNS);
 
       return {
         dom,
         contentDOM,
         update: (updatedNode) => {
+          // ProseMirror only calls a node view's `update` when the incoming node has
+          // the same type (CustomNodeViewDesc gates on `this.node.type == node.type`
+          // unless the spec opts into `multiType`, which this one does not).
+          /* v8 ignore next */
           if (updatedNode.type.name !== 'columnBlock') return false;
           contentDOM.setAttribute('data-cols', String(updatedNode.childCount));
           syncDisabled(updatedNode.childCount);

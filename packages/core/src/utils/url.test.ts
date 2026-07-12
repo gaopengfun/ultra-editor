@@ -55,3 +55,17 @@ describe('isSafeImageUrl', () => {
     expect(isSafeImageUrl('javascript:alert(1)')).toBe(false);
   });
 });
+
+// Neither the relative-path shortcut nor the scheme pattern fires on these, so
+// they exercise the "no protocol at all" fallthrough rather than an early exit.
+describe('schemeless URLs', () => {
+  it('accepts a bare path that starts with neither a scheme nor a path marker', () => {
+    expect(isSafeLinkUrl('example.com/page')).toBe(true);
+    expect(isSafeImageUrl('uploads/a.png')).toBe(true);
+  });
+
+  it('accepts an empty URL', () => {
+    expect(isSafeLinkUrl('')).toBe(true);
+    expect(isSafeImageUrl('')).toBe(true);
+  });
+});

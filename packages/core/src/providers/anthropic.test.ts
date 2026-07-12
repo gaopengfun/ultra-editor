@@ -102,4 +102,13 @@ describe('createAnthropicProvider', () => {
       'ai-request-failed: 529'
     );
   });
+
+  it('skips a text_delta that carries an empty string', async () => {
+    // Anthropic opens a text block with an empty delta. Yielding it would push an
+    // empty chunk at every consumer for no content.
+    const fetch = () => Promise.resolve(sseResponse(textDelta('') + textDelta('Hello') + STOP));
+    const provider = createAnthropicProvider({ fetch });
+
+    expect(await collect(provider.stream(request, signal()))).toEqual(['Hello']);
+  });
 });
