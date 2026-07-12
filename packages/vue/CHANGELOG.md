@@ -1,0 +1,16 @@
+# @ultra-editor/vue
+
+## 1.0.0
+
+AI Native 编辑器 SDK 首个正式版本。
+
+- **AI Native**：斜杠命令面板、选区 AI 气泡菜单、文档内流式生成（可中断 / 重试 / 丢弃）、Tab 接受的幽灵文本补全。通过 `AIProvider` 接口注入，不绑定任何厂商；附赠 OpenAI 兼容与 Anthropic 适配器。
+- **接受一次 AI 生成 = 一步撤销**：流式写入不进历史栈，接受时才作为一个普通编辑重放，丢弃则不留痕迹。
+- **零 UI 依赖**：移除 Element Plus 与 vue-advanced-cropper，自建对话框 / toast / 取色器 / 画布裁切器。
+- **上传解耦**：`UploadHandler` 注入，SDK 内不含任何 HTTP 客户端、URL 或鉴权逻辑。
+- **`--ue-*` 样式变量体系**：全部带兜底值，覆盖即换肤，内置深浅色主题。编辑态与阅读态共用一份 `content.css`。
+- 编辑器能力：图片（旋转 / 裁切 / 8 锚点缩放 / 对齐 / 图注 / 粘贴与拖拽上传）、1-5 栏卡片、可拖拽行高列宽与单元格底色的表格、代码高亮、字数统计、中英文 i18n、只读模式、SSR guard。
+
+### Dependencies
+
+- 依赖 `@ultra-editor/core@1.0.0`

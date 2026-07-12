@@ -1,9 +1,8 @@
----
-'@ultra-editor/core': minor
-'@ultra-editor/vue': minor
----
+# @ultra-editor/core
 
-AI Native 编辑器 SDK。
+## 1.0.0
+
+AI Native 编辑器 SDK 首个正式版本。
 
 - **AI Native**：斜杠命令面板、选区 AI 气泡菜单、文档内流式生成（可中断 / 重试 / 丢弃）、Tab 接受的幽灵文本补全。通过 `AIProvider` 接口注入，不绑定任何厂商；附赠 OpenAI 兼容与 Anthropic 适配器。
 - **接受一次 AI 生成 = 一步撤销**：流式写入不进历史栈，接受时才作为一个普通编辑重放，丢弃则不留痕迹。

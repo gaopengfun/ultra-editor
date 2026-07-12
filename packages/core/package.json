@@ -1,6 +1,6 @@
 {
   "name": "@ultra-editor/core",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "Framework-agnostic Tiptap extensions and AI engine for ultra-editor",
   "keywords": ["tiptap", "prosemirror", "editor", "wysiwyg", "ai", "rich-text"],
@@ -37,7 +37,7 @@
     "./content.css": "./styles/content.css",
     "./package.json": "./package.json"
   },
-  "files": ["dist", "styles"],
+  "files": ["dist", "styles", "CHANGELOG.md"],
   "scripts": {
     "build": "vite build && pnpm build:types",
     "build:types": "tsc -p tsconfig.build.json",

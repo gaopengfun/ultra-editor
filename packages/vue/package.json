@@ -1,6 +1,6 @@
 {
   "name": "@ultra-editor/vue",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "AI Native rich text editor for Vue 3, built on Tiptap",
   "keywords": ["tiptap", "vue", "vue3", "editor", "wysiwyg", "ai", "rich-text"],
@@ -25,7 +25,7 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["dist"],
+  "files": ["dist", "CHANGELOG.md"],
   "scripts": {
     "build": "vite build && pnpm build:types",
     "build:types": "vue-tsc -p tsconfig.build.json",
