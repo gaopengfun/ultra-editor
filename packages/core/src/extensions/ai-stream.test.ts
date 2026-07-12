@@ -121,5 +121,33 @@ describe('AIStream', () => {
 
       expect(blank.getHTML()).toBe(before);
     });
+
+    // Regression: a click before the user decides is a selection-only
+    // transaction that runs through the region's position-mapping branch. That
+    // branch used to rebuild the range without `consumedEmptyBlock`, so the
+    // swallowed paragraph was forgotten and discard/undo lost it.
+    it('restores the empty paragraph on discard after a click moves the selection', () => {
+      const before = blank.getHTML();
+
+      blank.commands.aiStreamStart();
+      blank.commands.aiStreamSet('AI 段落');
+      blank.commands.setTextSelection(1);
+      blank.commands.aiStreamDiscard();
+
+      expect(blank.getHTML()).toBe(before);
+    });
+
+    it('gives the empty paragraph back on undo after a click moves the selection', () => {
+      const before = blank.getHTML();
+
+      blank.commands.aiStreamStart();
+      blank.commands.aiStreamSet('AI 段落');
+      blank.commands.setTextSelection(1);
+      blank.commands.aiStreamAccept();
+      expect(blank.getHTML()).toBe('<p>正文</p><p>AI 段落</p>');
+
+      blank.commands.undo();
+      expect(blank.getHTML()).toBe(before);
+    });
   });
 });
