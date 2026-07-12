@@ -150,7 +150,6 @@ import '@ultra-editor/core/content.css'; // 只要内容样式，不含编辑器
 - [AI Provider 接入](./docs/ai-providers.md)
 - [主题定制](./docs/theming.md)
 - [扩展开发](./docs/extensions.md)
-- [从内置 Tiptap 迁移](./docs/migration.md)
 
 ## 本地开发
 
