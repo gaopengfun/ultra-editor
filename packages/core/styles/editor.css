@@ -561,7 +561,9 @@
 }
 
 .ue-swatch.is-active {
-  box-shadow: 0 0 0 2px var(--ue-surface), 0 0 0 4px var(--ue-primary);
+  box-shadow:
+    0 0 0 2px var(--ue-surface),
+    0 0 0 4px var(--ue-primary);
 }
 
 .ue-color-trigger {
@@ -592,6 +594,11 @@
   display: flex;
   gap: 8px;
   margin-top: 10px;
+}
+
+.ue-color-native {
+  width: 46px;
+  padding: 2px;
 }
 
 /* Image resize handles ---------------------------------------------------- */

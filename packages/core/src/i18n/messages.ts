@@ -9,10 +9,8 @@ export const zhCN = {
   'toolbar.strike': '删除线',
   'toolbar.code': '行内代码',
   'toolbar.color': '文字颜色',
-  'toolbar.highlight': '高亮',
   'toolbar.bulletList': '无序列表',
   'toolbar.orderedList': '有序列表',
-  'toolbar.taskList': '任务列表',
   'toolbar.blockquote': '引用',
   'toolbar.codeBlock': '代码块',
   'toolbar.link': '链接',
@@ -29,7 +27,7 @@ export const zhCN = {
   'link.title': '插入链接',
   'link.label': '请输入链接地址',
   'link.placeholder': 'https://',
-  'link.invalid': '仅支持 http/https 链接',
+  'link.invalid': '不支持的链接地址',
 
   // image
   'image.rotateCw': '顺时针旋转 90°',
@@ -78,7 +76,6 @@ export const zhCN = {
   'table.clearColor': '清除底色',
 
   // slash menu
-  'slash.placeholder': '输入 / 唤起命令',
   'slash.empty': '没有匹配的命令',
   'slash.group.basic': '基础',
   'slash.group.insert': '插入',
@@ -107,18 +104,11 @@ export const zhCN = {
   'ai.insertBelow': '插入到下方',
   'ai.noProvider': '未配置 AI Provider',
   'ai.failed': 'AI 生成失败，请重试',
-  'ai.aborted': '已停止生成',
   'ai.ghostHint': 'Tab 接受 · Esc 忽略',
-  'ai.tone.professional': '专业',
-  'ai.tone.casual': '轻松',
-  'ai.tone.friendly': '亲切',
-  'ai.tone.confident': '自信',
-  'ai.tone.humorous': '幽默',
 
   // misc
   'common.confirm': '确定',
   'common.cancel': '取消',
-  'common.close': '关闭',
   'editor.placeholder': '请输入内容…',
   'stats.words': '{n} 字',
   'stats.chars': '{n} 字符'
@@ -137,10 +127,8 @@ export const en: Messages = {
   'toolbar.strike': 'Strikethrough',
   'toolbar.code': 'Inline code',
   'toolbar.color': 'Text color',
-  'toolbar.highlight': 'Highlight',
   'toolbar.bulletList': 'Bullet list',
   'toolbar.orderedList': 'Ordered list',
-  'toolbar.taskList': 'Task list',
   'toolbar.blockquote': 'Blockquote',
   'toolbar.codeBlock': 'Code block',
   'toolbar.link': 'Link',
@@ -156,7 +144,7 @@ export const en: Messages = {
   'link.title': 'Insert link',
   'link.label': 'Enter the URL',
   'link.placeholder': 'https://',
-  'link.invalid': 'Only http/https links are allowed',
+  'link.invalid': 'Unsupported link address',
 
   'image.rotateCw': 'Rotate 90° clockwise',
   'image.rotateCcw': 'Rotate 90° counter-clockwise',
@@ -201,7 +189,6 @@ export const en: Messages = {
   'table.cellColor': 'Cell background',
   'table.clearColor': 'Clear background',
 
-  'slash.placeholder': 'Type / for commands',
   'slash.empty': 'No matching command',
   'slash.group.basic': 'Basic',
   'slash.group.insert': 'Insert',
@@ -229,17 +216,10 @@ export const en: Messages = {
   'ai.insertBelow': 'Insert below',
   'ai.noProvider': 'No AI provider configured',
   'ai.failed': 'AI generation failed, please retry',
-  'ai.aborted': 'Generation stopped',
   'ai.ghostHint': 'Tab to accept · Esc to dismiss',
-  'ai.tone.professional': 'Professional',
-  'ai.tone.casual': 'Casual',
-  'ai.tone.friendly': 'Friendly',
-  'ai.tone.confident': 'Confident',
-  'ai.tone.humorous': 'Humorous',
 
   'common.confirm': 'Confirm',
   'common.cancel': 'Cancel',
-  'common.close': 'Close',
   'editor.placeholder': 'Start writing…',
   'stats.words': '{n} words',
   'stats.chars': '{n} characters'

@@ -95,9 +95,8 @@ defineExpose({ swatches: SWATCHES });
       <div class="ue-color-actions">
         <input
           type="color"
-          class="ue-input"
+          class="ue-input ue-color-native"
           :value="props.modelValue || '#000000'"
-          style="width: 46px; padding: 2px"
           @input="pick(($event.target as HTMLInputElement).value)"
         />
         <button

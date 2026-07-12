@@ -16,7 +16,14 @@ export default defineConfig({
       fileName: (format) => `index.${format === 'es' ? 'js' : 'cjs'}`
     },
     rollupOptions: {
-      external: ['vue', /^@tiptap\//, /^@ultra-editor\//, /^prosemirror-/, 'lowlight'],
+      external: [
+        'vue',
+        /^@tiptap\//,
+        /^@ultra-editor\//,
+        /^prosemirror-/,
+        'lowlight',
+        /^highlight\.js/
+      ],
       output: {
         globals: { vue: 'Vue' }
       }
