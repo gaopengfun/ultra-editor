@@ -14,7 +14,15 @@ export {
   type UploadError,
   type UploadErrorCode
 } from './image-upload';
-export { AIStream, aiStreamRange, isAIStreaming, type AIStreamRange } from './ai-stream';
+export {
+  AIStream,
+  AI_STREAM_TRANSACTION_META,
+  aiStreamRange,
+  isAIStreaming,
+  isAIStreamTransaction,
+  type AIStreamRange
+} from './ai-stream';
+export { ULTRA_EDITOR_OPTIONS_META } from './runtime-options';
 export { GhostText, ghostSuggestion, type GhostTextOptions } from './ghost-text';
 export {
   SlashCommand,

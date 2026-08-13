@@ -4,9 +4,12 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import {
   DEFAULT_MAX_IMAGE_SIZE,
+  DEFAULT_UPLOAD_CONCURRENCY,
   dataUrlUpload,
   formatSize,
   isAcceptedFile,
+  resolveUploadConcurrency,
+  type OptionSource,
   type UploadHandler
 } from '../upload';
 import { isBrowser } from '../utils/env';
@@ -23,7 +26,8 @@ export interface UploadError {
 
 export interface ImageUploadOptions {
   upload: UploadHandler;
-  maxSize: number;
+  maxSize: OptionSource<number>;
+  concurrency: OptionSource<number>;
   accept: string[];
   onError?: (error: UploadError) => void;
 }
@@ -38,7 +42,7 @@ declare module '@tiptap/core' {
 }
 
 interface PlaceholderMeta {
-  add?: { id: symbol; pos: number };
+  add?: Array<{ id: symbol; pos: number; side: number }>;
   remove?: symbol;
 }
 
@@ -86,6 +90,7 @@ export const ImageUpload = Extension.create<ImageUploadOptions>({
     return {
       upload: dataUrlUpload,
       maxSize: DEFAULT_MAX_IMAGE_SIZE,
+      concurrency: DEFAULT_UPLOAD_CONCURRENCY,
       accept: ['image/'],
       onError: undefined
     };
@@ -98,6 +103,7 @@ export const ImageUpload = Extension.create<ImageUploadOptions>({
         ({ editor, tr, dispatch }) => {
           const list = Array.from(files as File[]);
           if (!list.length) return false;
+          if (!editor.isEditable) return false;
           // `dispatch` is undefined during a `can()` probe. Uploading there would
           // fire real network requests just to answer "is this possible?".
           if (!dispatch) return true;
@@ -109,7 +115,7 @@ export const ImageUpload = Extension.create<ImageUploadOptions>({
           tr.setMeta('preventDispatch', true);
 
           const { view } = editor;
-          list.forEach((file) => startUpload(view, file, this.options, view.state.selection.from));
+          startUploads(view, list, this.options, view.state.selection.from);
           return true;
         }
     };
@@ -127,9 +133,15 @@ export const ImageUpload = Extension.create<ImageUploadOptions>({
             let next = set.map(tr.mapping, tr.doc);
             const meta = tr.getMeta(uploadKey) as PlaceholderMeta | undefined;
             if (meta?.add && isBrowser()) {
-              next = next.add(tr.doc, [
-                Decoration.widget(meta.add.pos, placeholderWidget(), { id: meta.add.id })
-              ]);
+              const missing = meta.add.filter(
+                ({ id }) => !next.find(undefined, undefined, (spec) => spec.id === id).length
+              );
+              next = next.add(
+                tr.doc,
+                missing.map(({ id, pos, side }) =>
+                  Decoration.widget(pos, placeholderWidget(), { id, side })
+                )
+              );
             }
             if (meta?.remove) {
               next = next.remove(
@@ -143,14 +155,16 @@ export const ImageUpload = Extension.create<ImageUploadOptions>({
           decorations: (state) => uploadKey.getState(state),
 
           handlePaste(view, event) {
+            if (!view.editable) return false;
             const files = imagesFromClipboard(event.clipboardData?.items);
             if (!files.length) return false;
             event.preventDefault();
-            files.forEach((file) => startUpload(view, file, options, view.state.selection.from));
+            startUploads(view, files, options, view.state.selection.from);
             return true;
           },
 
           handleDrop(view, event) {
+            if (!view.editable) return false;
             const dragEvent = event as DragEvent;
             const files = imagesFromFileList(dragEvent.dataTransfer?.files);
             if (!files.length) return false;
@@ -160,7 +174,7 @@ export const ImageUpload = Extension.create<ImageUploadOptions>({
               top: dragEvent.clientY
             });
             const pos = coords?.pos ?? view.state.selection.from;
-            files.forEach((file) => startUpload(view, file, options, pos));
+            startUploads(view, files, options, pos);
             return true;
           }
         }
@@ -169,41 +183,85 @@ export const ImageUpload = Extension.create<ImageUploadOptions>({
   }
 });
 
-function startUpload(view: EditorView, file: File, options: ImageUploadOptions, pos: number): void {
-  const max = formatSize(options.maxSize);
+function startUploads(
+  view: EditorView,
+  files: File[],
+  options: ImageUploadOptions,
+  pos: number
+): void {
+  const maxSize = typeof options.maxSize === 'function' ? options.maxSize() : options.maxSize;
+  const max = formatSize(maxSize);
+  const accepted = files.filter((file) => {
+    if (!isAcceptedFile(file, options.accept)) {
+      options.onError?.({ code: 'unsupported', file, size: formatSize(file.size), max });
+      return false;
+    }
+    if (file.size > maxSize) {
+      options.onError?.({ code: 'too-large', file, size: formatSize(file.size), max });
+      return false;
+    }
+    return true;
+  });
+  if (!accepted.length) return;
 
-  if (!isAcceptedFile(file, options.accept)) {
-    options.onError?.({ code: 'unsupported', file, size: formatSize(file.size), max });
+  const entries = accepted.map((file, index) => ({
+    file,
+    id: Symbol('ue-upload'),
+    side: index + 1
+  }));
+  view.dispatch(
+    view.state.tr.setMeta(uploadKey, {
+      add: entries.map(({ id, side }) => ({ id, pos, side }))
+    } satisfies PlaceholderMeta)
+  );
+
+  let next = 0;
+  const worker = async () => {
+    while (next < entries.length) {
+      const entry = entries[next++];
+      await finishUpload(view, entry.file, entry.id, options, max);
+    }
+  };
+  const concurrency = Math.min(resolveUploadConcurrency(options.concurrency), entries.length);
+  void Promise.all(Array.from({ length: concurrency }, () => worker()));
+}
+
+async function finishUpload(
+  view: EditorView,
+  file: File,
+  id: symbol,
+  options: ImageUploadOptions,
+  max: string
+): Promise<void> {
+  let url: string | null = null;
+  try {
+    url = await options.upload(file, file.name);
+  } catch {
+    // Reported after the destroyed-view guard below.
+  }
+
+  if (view.isDestroyed) return;
+  if (url === null) {
+    options.onError?.({ code: 'failed', file, size: formatSize(file.size), max });
+  }
+
+  const at = placeholderPos(view, id);
+  let tr = view.state.tr;
+  if (at == null || url === null) {
+    view.dispatch(tr.setMeta(uploadKey, { remove: id } satisfies PlaceholderMeta));
     return;
   }
-  if (file.size > options.maxSize) {
-    options.onError?.({ code: 'too-large', file, size: formatSize(file.size), max });
-    return;
-  }
-
-  const id = Symbol('ue-upload');
-  view.dispatch(view.state.tr.setMeta(uploadKey, { add: { id, pos } } satisfies PlaceholderMeta));
-
-  options
-    .upload(file, file.name)
-    .then((url) => {
-      // The editor can be torn down while the upload is in flight; dispatching
-      // into a destroyed view throws. Abandon the result quietly.
-      if (view.isDestroyed) return;
-      const at = placeholderPos(view, id);
-      const tr = view.state.tr.setMeta(uploadKey, { remove: id } satisfies PlaceholderMeta);
-      // The placeholder is gone (user undid, or deleted the paragraph) — drop the
-      // result rather than parachuting an image into wherever the cursor now is.
-      if (at == null) {
-        view.dispatch(tr);
-        return;
-      }
-      const node = view.state.schema.nodes.image.create({ src: url, alt: file.name || null });
-      view.dispatch(tr.replaceWith(at, at, node));
-    })
-    .catch(() => {
-      if (view.isDestroyed) return;
-      view.dispatch(view.state.tr.setMeta(uploadKey, { remove: id } satisfies PlaceholderMeta));
-      options.onError?.({ code: 'failed', file, size: formatSize(file.size), max });
-    });
+  const node = view.state.schema.nodes.image.create({ src: url, alt: file.name || null });
+  const siblings = (uploadKey.getState(view.state) as DecorationSet).find(
+    undefined,
+    undefined,
+    (spec) => spec.id !== id
+  );
+  tr = tr.replaceWith(at, at, node);
+  const add = siblings.map((decoration) => ({
+    id: decoration.spec.id as symbol,
+    pos: tr.mapping.map(decoration.from, 1),
+    side: decoration.spec.side as number
+  }));
+  view.dispatch(tr.setMeta(uploadKey, { remove: id, add } satisfies PlaceholderMeta));
 }

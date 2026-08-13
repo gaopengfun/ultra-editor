@@ -148,6 +148,22 @@ afterEach(() => {
 });
 
 describe('loading the source', () => {
+  it('loads immediately when it is first mounted open', async () => {
+    wrapper = mount(UeCropper, {
+      attachTo: document.body,
+      props: {
+        modelValue: true,
+        src: '/photo.png',
+        fetchImage,
+        t: createTranslator('zh-CN')
+      }
+    });
+    await flushPromises();
+
+    expect(fetchImage).toHaveBeenCalledWith('/photo.png');
+    expect(image()?.src).toMatch(/^blob:/);
+  });
+
   it('pulls the bytes through the injected fetcher rather than the network', async () => {
     const network = vi.spyOn(globalThis, 'fetch');
 

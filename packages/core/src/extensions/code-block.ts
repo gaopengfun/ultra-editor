@@ -4,10 +4,12 @@ import {
 } from '@tiptap/extension-code-block-lowlight';
 import { isBrowser } from '../utils/env';
 import { createTranslator, type LocaleName, type Messages, type Translator } from '../i18n';
+import { ULTRA_EDITOR_OPTIONS_META } from './runtime-options';
 
 export interface UltraCodeBlockOptions extends CodeBlockLowlightOptions {
   locale: LocaleName;
   messages: Partial<Messages>;
+  translator?: () => Translator;
 }
 
 const ICON = {
@@ -80,14 +82,16 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
     return {
       ...(this.parent?.() as CodeBlockLowlightOptions),
       locale: 'zh-CN' as LocaleName,
-      messages: {}
+      messages: {},
+      translator: undefined
     };
   },
 
   addNodeView() {
     if (!isBrowser()) return null;
 
-    const t: Translator = createTranslator(this.options.locale, this.options.messages);
+    const fallback: Translator = createTranslator(this.options.locale, this.options.messages);
+    const t = () => this.options.translator?.() ?? fallback;
     const prefix = this.options.languageClassPrefix;
     const lowlight = this.options.lowlight as { listLanguages: () => string[] };
     const languages = lowlight
@@ -130,7 +134,7 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
       trigger.className = 'ue-codeblock__lang';
       trigger.setAttribute('aria-haspopup', 'listbox');
       trigger.setAttribute('aria-expanded', 'false');
-      trigger.title = t('codeBlock.language');
+      trigger.title = t()('codeBlock.language');
 
       // A native <select> renders an OS popup: it takes the control's own colour
       // into its options, ignores the editor's surface, and drops a 35-row list
@@ -138,7 +142,7 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
       const list = document.createElement('div');
       list.className = 'ue-menu ue-codeblock__langs';
       list.setAttribute('role', 'listbox');
-      list.setAttribute('aria-label', t('codeBlock.language'));
+      list.setAttribute('aria-label', t()('codeBlock.language'));
 
       const options: Array<{ id: string | null; item: HTMLButtonElement }> = [];
 
@@ -160,7 +164,7 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
         options.push({ id, item });
       };
 
-      addOption(null, t('codeBlock.plain'));
+      addOption(null, t()('codeBlock.plain'));
       languages.forEach((id) => addOption(id, labelOf(id)));
 
       const syncOptions = () => {
@@ -269,7 +273,7 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
 
       const syncLanguage = (next: string | null) => {
         language = next;
-        trigger.textContent = next ? labelOf(next) : t('codeBlock.plain');
+        trigger.textContent = next ? labelOf(next) : t()('codeBlock.plain');
         contentDOM.className = next ? `${prefix}${next}` : '';
         if (open) syncOptions();
       };
@@ -283,7 +287,7 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
       const copyLabel = document.createElement('span');
       const renderCopy = (copied: boolean) => {
         copy.innerHTML = copied ? ICON.copied : ICON.copy;
-        copyLabel.textContent = copied ? t('codeBlock.copied') : t('codeBlock.copy');
+        copyLabel.textContent = copied ? t()('codeBlock.copied') : t()('codeBlock.copy');
         copy.appendChild(copyLabel);
         copy.classList.toggle('is-copied', copied);
       };
@@ -321,6 +325,21 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
       };
       editor.on('update', syncEditable);
 
+      const syncRuntimeOptions = ({
+        transaction
+      }: {
+        transaction: import('@tiptap/pm/state').Transaction;
+      }) => {
+        if (!transaction.getMeta(ULTRA_EDITOR_OPTIONS_META)) return;
+        trigger.title = t()('codeBlock.language');
+        list.setAttribute('aria-label', t()('codeBlock.language'));
+        const plain = options[0]?.item.querySelector<HTMLElement>('.ue-menu__label');
+        if (plain) plain.textContent = t()('codeBlock.plain');
+        syncLanguage(language);
+        renderCopy(copy.classList.contains('is-copied'));
+      };
+      editor.on('transaction', syncRuntimeOptions);
+
       syncLanguage(language);
       syncEditable();
 
@@ -346,6 +365,7 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
           closeList();
           clearTimeout(copiedTimer);
           editor.off('update', syncEditable);
+          editor.off('transaction', syncRuntimeOptions);
         }
       };
     };

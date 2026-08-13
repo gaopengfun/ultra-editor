@@ -3,7 +3,7 @@ import type { Editor } from '@tiptap/vue-3';
 import UeIcon from './UeIcon.vue';
 import UeGridPicker from './UeGridPicker.vue';
 import UeColorPicker from './UeColorPicker.vue';
-import { MAX_COLUMNS, type Translator } from '@ultra-editor/core';
+import { MAX_COLUMNS, type Translator } from '@ultra-editor/core/lean';
 
 const props = defineProps<{
   editor: Editor;
@@ -195,7 +195,12 @@ const insertTable = ({ rows, cols }: { rows: number; cols: number }) =>
 
     <template v-if="hasAI">
       <span class="ue-tb-divider" />
-      <button type="button" class="ue-tb-btn ue-tb-btn--ai" :title="t('toolbar.ai')" @click="emit('ai')">
+      <button
+        type="button"
+        class="ue-tb-btn ue-tb-btn--ai"
+        :title="t('toolbar.ai')"
+        @click="emit('ai')"
+      >
         <UeIcon name="ai" />
         {{ t('toolbar.ai') }}
       </button>

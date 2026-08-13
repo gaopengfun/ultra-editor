@@ -110,11 +110,13 @@ export const zhCN = {
   'ai.insertBelow': '插入到下方',
   'ai.noProvider': '未配置 AI Provider',
   'ai.failed': 'AI 生成失败，请重试',
+  'ai.selectionChanged': '原选区已被删除或替换，请重新选择内容',
   'ai.ghostHint': 'Tab 接受 · Esc 忽略',
 
   // misc
   'common.confirm': '确定',
   'common.cancel': '取消',
+  'common.close': '关闭',
   'editor.placeholder': '请输入内容…',
   'stats.words': '{n} 字',
   'stats.chars': '{n} 字符'
@@ -227,10 +229,12 @@ export const en: Messages = {
   'ai.insertBelow': 'Insert below',
   'ai.noProvider': 'No AI provider configured',
   'ai.failed': 'AI generation failed, please retry',
+  'ai.selectionChanged': 'The original selection changed; select the content again',
   'ai.ghostHint': 'Tab to accept · Esc to dismiss',
 
   'common.confirm': 'Confirm',
   'common.cancel': 'Cancel',
+  'common.close': 'Close',
   'editor.placeholder': 'Start writing…',
   'stats.words': '{n} words',
   'stats.chars': '{n} characters'

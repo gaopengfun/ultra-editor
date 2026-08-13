@@ -2,7 +2,12 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import UeDialog from './UeDialog.vue';
 import UeIcon from './UeIcon.vue';
-import { transformImage, type ImageFetcher, type Translator } from '@ultra-editor/core';
+import {
+  transformImage,
+  type ImageFetcher,
+  type ImageProcessingLimits,
+  type Translator
+} from '@ultra-editor/core/lean';
 
 /**
  * Crop / rotate / flip, built on a plain canvas.
@@ -16,6 +21,7 @@ const props = defineProps<{
   modelValue: boolean;
   src: string;
   fetchImage?: ImageFetcher;
+  limits?: ImageProcessingLimits;
   t: Translator;
 }>();
 
@@ -176,7 +182,8 @@ async function confirm() {
         flipH: flipH.value,
         flipV: flipV.value
       },
-      props.fetchImage
+      props.fetchImage,
+      props.limits
     );
     emit('confirm', blob);
     close();
@@ -196,7 +203,8 @@ watch(
   (open) => {
     if (open && props.src) void load(props.src);
     else revoke();
-  }
+  },
+  { immediate: true }
 );
 
 onBeforeUnmount(() => {
@@ -209,6 +217,7 @@ onBeforeUnmount(() => {
   <UeDialog
     :model-value="modelValue"
     :title="t('image.cropTitle')"
+    :close-label="t('common.close')"
     width="760px"
     @update:model-value="close"
   >
@@ -246,19 +255,49 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="ue-crop__tools">
-      <button type="button" class="ue-btn" :title="t('image.rotateCcw')" @click="turn(-1)">
+      <button
+        type="button"
+        class="ue-btn"
+        :title="t('image.rotateCcw')"
+        :aria-label="t('image.rotateCcw')"
+        @click="turn(-1)"
+      >
         <UeIcon name="rotateCcw" />
       </button>
-      <button type="button" class="ue-btn" :title="t('image.rotateCw')" @click="turn(1)">
+      <button
+        type="button"
+        class="ue-btn"
+        :title="t('image.rotateCw')"
+        :aria-label="t('image.rotateCw')"
+        @click="turn(1)"
+      >
         <UeIcon name="rotateCw" />
       </button>
-      <button type="button" class="ue-btn" :title="t('image.flipH')" @click="flipH = !flipH">
+      <button
+        type="button"
+        class="ue-btn"
+        :title="t('image.flipH')"
+        :aria-label="t('image.flipH')"
+        @click="flipH = !flipH"
+      >
         <UeIcon name="flipH" />
       </button>
-      <button type="button" class="ue-btn" :title="t('image.flipV')" @click="flipV = !flipV">
+      <button
+        type="button"
+        class="ue-btn"
+        :title="t('image.flipV')"
+        :aria-label="t('image.flipV')"
+        @click="flipV = !flipV"
+      >
         <UeIcon name="flipV" />
       </button>
-      <button type="button" class="ue-btn" :title="t('image.reset')" @click="reset">
+      <button
+        type="button"
+        class="ue-btn"
+        :title="t('image.reset')"
+        :aria-label="t('image.reset')"
+        @click="reset"
+      >
         <UeIcon name="reset" />
       </button>
     </div>

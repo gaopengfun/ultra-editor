@@ -73,6 +73,7 @@ function paced(chunks: string[]) {
     await vi.waitFor(() => expect(gates.length).toBeGreaterThan(0), { interval: 1 });
     gates.shift()?.();
     await vi.waitFor(() => expect(consumed).toBe(target), { interval: 1 });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     await nextTick();
   }
 
@@ -268,6 +269,23 @@ describe('asking for an instruction', () => {
 });
 
 describe('generating into the document', () => {
+  it('moves focus into the panel and restores it to the editor on close', async () => {
+    const stream = paced(['一段']);
+    setup({ provider: stream.provider });
+    editor.view.dom.focus();
+
+    controller.start('continue');
+    await nextTick();
+    await nextTick();
+
+    expect(panel()?.tabIndex).toBe(-1);
+    expect(document.activeElement).toBe(button('停止'));
+
+    button('丢弃')?.click();
+    await nextTick();
+    expect(document.activeElement).toBe(editor.view.dom);
+  });
+
   it('streams the model’s words into the document as they arrive', async () => {
     const stream = paced(['第一句。', '第二句。']);
     setup({ provider: stream.provider });

@@ -129,6 +129,14 @@ describe('ImageUpload commands', () => {
     expect(upload).not.toHaveBeenCalled();
     expect(editor.getHTML()).toBe(before);
   });
+
+  it('refuses programmatic uploads while the editor is read-only', () => {
+    const editor = makeEditor({ upload: { upload } });
+    editor.setEditable(false);
+
+    expect(editor.commands.uploadImages([imageFile()])).toBe(false);
+    expect(upload).not.toHaveBeenCalled();
+  });
 });
 
 describe('ImageUpload paste', () => {
@@ -188,6 +196,16 @@ describe('ImageUpload paste', () => {
     expect(paste(editor.view, clipboardEvent())).toBe(false);
     expect(upload).not.toHaveBeenCalled();
   });
+
+  it('leaves image paste to the host while the editor is read-only', () => {
+    const editor = makeEditor({ upload: { upload } });
+    editor.setEditable(false);
+    const event = clipboardEvent([fileItem(imageFile())]);
+
+    expect(paste(editor.view, event)).toBe(false);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(upload).not.toHaveBeenCalled();
+  });
 });
 
 describe('ImageUpload drop', () => {
@@ -228,6 +246,16 @@ describe('ImageUpload drop', () => {
 
     expect(drop(editor.view, dropEvent([text]))).toBe(false);
     expect(drop(editor.view, dropEvent())).toBe(false);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('ignores image drops while the editor is read-only', () => {
+    const editor = makeEditor({ upload: { upload } });
+    editor.setEditable(false);
+    const event = dropEvent([imageFile()]);
+
+    expect(drop(editor.view, event)).toBe(false);
+    expect(event.preventDefault).not.toHaveBeenCalled();
     expect(upload).not.toHaveBeenCalled();
   });
 });
@@ -339,6 +367,74 @@ describe('ImageUpload placeholder', () => {
     expect(html.indexOf('https://cdn.test/first.png')).toBeLessThan(
       html.indexOf('https://cdn.test/second.png')
     );
+  });
+
+  it('inserts each image as soon as it finishes without waiting for a slow sibling', async () => {
+    const first = deferred<string>();
+    const second = deferred<string>();
+    upload = vi
+      .fn<UploadHandler>()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const editor = makeEditor({ upload: { upload } });
+
+    editor.commands.uploadImages([imageFile('first.png'), imageFile('second.png')]);
+    expect(placeholders(editor)).toBe(2);
+
+    second.resolve('https://cdn.test/second.png');
+    await flush();
+    expect(placeholders(editor)).toBe(1);
+    expect(editor.getHTML()).toContain('https://cdn.test/second.png');
+    expect(editor.getHTML()).not.toContain('https://cdn.test/first.png');
+
+    first.resolve('https://cdn.test/first.png');
+    await flush();
+
+    const html = editor.getHTML();
+    expect(placeholders(editor)).toBe(0);
+    expect(html).toContain('alt="first.png"');
+    expect(html).toContain('alt="second.png"');
+    expect(html.indexOf('https://cdn.test/first.png')).toBeLessThan(
+      html.indexOf('https://cdn.test/second.png')
+    );
+  });
+
+  it('limits the number of uploads running at once', async () => {
+    const pending: Array<ReturnType<typeof deferred<string>>> = [];
+    let active = 0;
+    let peak = 0;
+    upload = vi.fn<UploadHandler>(() => {
+      const gate = deferred<string>();
+      pending.push(gate);
+      active++;
+      peak = Math.max(peak, active);
+      return gate.promise.finally(() => active--);
+    });
+    const editor = makeEditor({ upload: { upload, concurrency: 2 } });
+
+    editor.commands.uploadImages([
+      imageFile('a.png'),
+      imageFile('b.png'),
+      imageFile('c.png'),
+      imageFile('d.png')
+    ]);
+
+    expect(placeholders(editor)).toBe(4);
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(peak).toBe(2);
+
+    pending[1].resolve('https://cdn.test/b.png');
+    await flush();
+    expect(upload).toHaveBeenCalledTimes(3);
+    expect(editor.getHTML()).toContain('https://cdn.test/b.png');
+    expect(peak).toBe(2);
+
+    pending[0].resolve('https://cdn.test/a.png');
+    await flush();
+    expect(upload).toHaveBeenCalledTimes(4);
+    pending.slice(2).forEach((gate, index) => gate.resolve(`https://cdn.test/${index}.png`));
+    await flush();
+    expect(placeholders(editor)).toBe(0);
   });
 
   it('leaves no debris behind when the upload fails', async () => {

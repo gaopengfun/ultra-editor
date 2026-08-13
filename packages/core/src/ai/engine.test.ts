@@ -187,6 +187,17 @@ describe('isAbortError', () => {
 });
 
 describe('collectAI', () => {
+  it('does not call the provider when the caller signal was already aborted', async () => {
+    const stream = vi.fn(async function* () {
+      yield 'should not run';
+    });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(collectAI({ stream }, request, controller.signal)).resolves.toBe('');
+    expect(stream).not.toHaveBeenCalled();
+  });
+
   it('concatenates the whole stream into one string', async () => {
     expect(await collectAI(provider(['Hel', 'lo, ', 'world']), request)).toBe('Hello, world');
   });

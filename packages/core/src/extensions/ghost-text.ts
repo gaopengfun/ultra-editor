@@ -17,15 +17,18 @@ export interface GhostTextOptions {
    */
   enabled: Toggle;
   /** Idle time before a completion is requested, in ms. */
-  delay: number;
+  delay: number | (() => number);
   /** Minimum characters in the current block before suggesting anything. */
   minChars: number;
   /** How much preceding text to send as context, in characters. */
   contextLength: number;
-  locale?: string;
+  locale?: string | (() => string);
   /** Badge shown beside the suggestion, e.g. "Tab to accept". */
-  hint: string;
+  hint: string | (() => string);
 }
+
+const resolveValue = <T>(value: T | (() => T)): T =>
+  typeof value === 'function' ? (value as () => T)() : value;
 
 interface GhostState {
   text: string;
@@ -137,8 +140,6 @@ export const GhostText = Extension.create<GhostTextOptions>({
 
   addProseMirrorPlugins() {
     const options = this.options;
-    const hint = options.hint;
-
     return [
       new Plugin<GhostState | null>({
         key: ghostKey,
@@ -160,9 +161,11 @@ export const GhostText = Extension.create<GhostTextOptions>({
             const suggestion = ghostKey.getState(state);
             if (!suggestion || !isBrowser()) return DecorationSet.empty;
             return DecorationSet.create(state.doc, [
-              Decoration.widget(suggestion.pos, () => ghostWidget(suggestion.text, hint), {
-                side: 1
-              })
+              Decoration.widget(
+                suggestion.pos,
+                () => ghostWidget(suggestion.text, resolveValue(options.hint)),
+                { side: 1 }
+              )
             ]);
           }
         },
@@ -197,7 +200,12 @@ export const GhostText = Extension.create<GhostTextOptions>({
 
             try {
               for await (const chunk of provider.stream(
-                { task: 'complete', text: '', context, locale: options.locale },
+                {
+                  task: 'complete',
+                  text: '',
+                  context,
+                  locale: options.locale ? resolveValue(options.locale) : undefined
+                },
                 signal
               )) {
                 if (signal.aborted) return;
@@ -230,7 +238,7 @@ export const GhostText = Extension.create<GhostTextOptions>({
             if (!resolveToggle(options.enabled) || !resolveProvider(options.provider)) return;
             if (!editorView.editable) return;
             if (!shouldSuggest(editorView.state, options.minChars)) return;
-            timer = setTimeout(() => void request(editorView), options.delay);
+            timer = setTimeout(() => void request(editorView), resolveValue(options.delay));
           };
 
           return {

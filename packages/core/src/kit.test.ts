@@ -74,6 +74,19 @@ describe('image', () => {
     editor.commands.setContent('<img src="javascript:alert(1)">');
     expect(editor.getHTML()).not.toContain('javascript:');
   });
+
+  it('round-trips data URLs produced by the default image upload handler', () => {
+    const source = 'data:image/png;base64,iVBORw0KGgo=';
+    editor.commands.setContent(`<img src="${source}" alt="inline.png">`);
+    const saved = editor.getHTML();
+    const reloaded = makeEditor(saved);
+
+    expect(saved).toContain(source);
+    expect(reloaded.getHTML()).toContain(source);
+    expect(reloaded.getHTML()).toContain('alt="inline.png"');
+
+    reloaded.destroy();
+  });
 });
 
 describe('columns', () => {
@@ -274,7 +287,8 @@ describe('feature matrix', () => {
 
 describe('placeholder, locale and messages', () => {
   const placeholderOf = (options: UltraKitOptions) =>
-    optionsOf<{ placeholder: string }>(createUltraKit(options), 'placeholder').placeholder;
+    optionsOf<{ placeholder: string | (() => string) }>(createUltraKit(options), 'placeholder')
+      .placeholder;
 
   it("falls back to the locale's own placeholder string", () => {
     expect(placeholderOf({})).toBe('请输入内容…');
@@ -287,6 +301,17 @@ describe('placeholder, locale and messages', () => {
 
   it('lets a message override rewrite the placeholder without switching locale', () => {
     expect(placeholderOf({ messages: { 'editor.placeholder': '开始吧…' } })).toBe('开始吧…');
+  });
+
+  it('resolves the placeholder from a live translator when one is supplied', () => {
+    let prefix = 'first';
+    const placeholder = placeholderOf({
+      translator: () => (key) => `${prefix}:${key}`
+    }) as () => string;
+
+    expect(placeholder()).toBe('first:editor.placeholder');
+    prefix = 'second';
+    expect(placeholder()).toBe('second:editor.placeholder');
   });
 
   it('hands the locale and message overrides down to the column and code-block chrome', () => {
@@ -332,25 +357,27 @@ describe('upload plumbing', () => {
     const upload = vi.fn(async () => 'https://cdn.example.com/a.png');
     const onUploadError = vi.fn();
     const extensions = createUltraKit({
-      upload: { upload, maxSize: 128, accept: ['image/png'] },
+      upload: { upload, maxSize: 128, concurrency: 2, accept: ['image/png'] },
       onUploadError
     });
 
     expect(optionsOf<Record<string, unknown>>(extensions, 'imageUpload')).toMatchObject({
       upload,
       maxSize: 128,
+      concurrency: 2,
       accept: ['image/png'],
       onError: onUploadError
     });
   });
 
   it('falls back to the 5 MB image-only defaults when no upload options are given', () => {
-    const options = optionsOf<{ maxSize: number; accept: string[] }>(
+    const options = optionsOf<{ maxSize: number; concurrency: number; accept: string[] }>(
       createUltraKit(),
       'imageUpload'
     );
 
     expect(options.maxSize).toBe(5 * 1024 * 1024);
+    expect(options.concurrency).toBe(3);
     expect(options.accept).toEqual(['image/']);
   });
 });
@@ -466,5 +493,18 @@ describe('ghost text wiring', () => {
       locale: 'en',
       hint: 'Tab'
     });
+  });
+
+  it('resolves the default hint from a live translator', () => {
+    let prefix = 'first';
+    const options = ghostOptionsOf({
+      translator: () => (key) => `${prefix}:${key}`,
+      ai: {}
+    });
+    const hint = options.hint as () => string;
+
+    expect(hint()).toBe('first:ai.ghostHint');
+    prefix = 'second';
+    expect(hint()).toBe('second:ai.ghostHint');
   });
 });

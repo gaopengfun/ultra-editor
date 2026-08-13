@@ -1,6 +1,6 @@
-import Image from '@tiptap/extension-image';
+import { Image } from '@tiptap/extension-image';
 import { mergeAttributes, ResizableNodeView } from '@tiptap/core';
-import type { ResizableNodeViewDirection } from '@tiptap/core';
+import type { Editor, ResizableNodeViewDirection } from '@tiptap/core';
 import { isSafeImageUrl } from '../utils/url';
 import { isBrowser } from '../utils/env';
 
@@ -110,6 +110,7 @@ export const ImageFigure = Image.extend({
     const optionHTMLAttributes = this.options.HTMLAttributes;
 
     return ({ node, getPos, HTMLAttributes }) => {
+      let liveNode = node;
       const el = document.createElement('img');
       el.draggable = false;
 
@@ -133,9 +134,17 @@ export const ImageFigure = Image.extend({
       });
       if (typeof merged.src === 'string' && isSafeImageUrl(merged.src)) el.src = merged.src;
 
+      // Tiptap 3.27 subscribes and unsubscribes with two different bound
+      // functions. Keep its subscription off the real editor and own one stable
+      // listener below until upstream can remove the workaround.
+      const resizeEditor = {
+        on: () => resizeEditor,
+        off: () => resizeEditor
+      } as unknown as Editor;
+
       const nodeView = new ResizableNodeView({
         element: el,
-        editor,
+        editor: resizeEditor,
         node,
         getPos,
         onResize: (width: number, height: number) => {
@@ -143,6 +152,7 @@ export const ImageFigure = Image.extend({
           el.style.height = `${height}px`;
         },
         onCommit: (width: number, height: number) => {
+          if (!editor.isEditable) return;
           const pos = getPos();
           if (pos === undefined) return;
           editor
@@ -153,6 +163,7 @@ export const ImageFigure = Image.extend({
         },
         onUpdate: (updatedNode) => {
           if (updatedNode.type !== node.type) return false;
+          liveNode = updatedNode;
           const container = nodeView.dom as HTMLElement;
           container.style.justifyContent = updatedNode.attrs.align
             ? (JUSTIFY[updatedNode.attrs.align] ?? 'flex-start')
@@ -178,6 +189,40 @@ export const ImageFigure = Image.extend({
       });
 
       const container = nodeView.dom as HTMLElement;
+      const internals = nodeView as unknown as {
+        handleMouseUp: () => void;
+        handleTouchMove: (event: TouchEvent) => void;
+      };
+      const handles = Array.from(container.querySelectorAll<HTMLElement>('[data-resize-handle]'));
+
+      const stopTouchResize = () => {
+        internals.handleMouseUp();
+        document.removeEventListener('touchmove', internals.handleTouchMove);
+      };
+      const syncEditable = () => {
+        handles.forEach((handle) => {
+          handle.hidden = !editor.isEditable;
+        });
+        if (editor.isEditable || container.dataset.resizeState !== 'true') return;
+        stopTouchResize();
+        el.style.width = liveNode.attrs.width ? `${liveNode.attrs.width}px` : '';
+        el.style.height = liveNode.attrs.height ? `${liveNode.attrs.height}px` : '';
+      };
+
+      document.addEventListener('touchend', stopTouchResize);
+      document.addEventListener('touchcancel', stopTouchResize);
+      editor.on('update', syncEditable);
+      syncEditable();
+
+      const destroy = nodeView.destroy.bind(nodeView);
+      nodeView.destroy = () => {
+        editor.off('update', syncEditable);
+        document.removeEventListener('touchend', stopTouchResize);
+        document.removeEventListener('touchcancel', stopTouchResize);
+        document.removeEventListener('touchmove', internals.handleTouchMove);
+        destroy();
+      };
+
       container.style.justifyContent = node.attrs.align
         ? (JUSTIFY[node.attrs.align] ?? 'flex-start')
         : '';

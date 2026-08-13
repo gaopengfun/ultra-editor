@@ -5,6 +5,7 @@
     "declaration": false,
     "declarationMap": false,
     "paths": {
+      "@ultra-editor/core/lean": ["../packages/core/src/lean.ts"],
       "@ultra-editor/core": ["../packages/core/src/index.ts"],
       "@ultra-editor/core/providers/*": ["../packages/core/src/providers/*"],
       "@ultra-editor/vue": ["../packages/vue/src/index.ts"]

@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
 import { TextSelection } from '@tiptap/pm/state';
 import { createUltraKit } from '../kit';
 import { AIAbortError } from '../ai/engine';
 import type { AIProvider, AIProviderSource, AIRequest, Toggle } from '../ai/types';
-import { ghostSuggestion } from './ghost-text';
+import { GhostText, ghostSuggestion } from './ghost-text';
 
 const CONTENT = '<p>正文内容</p>';
 const DELAY = 10;
@@ -13,7 +14,7 @@ const HINT = 'Tab 采纳';
 
 interface GhostOptions {
   enabled?: Toggle;
-  delay?: number;
+  delay?: number | (() => number);
   minChars?: number;
   contextLength?: number;
   hint?: string;
@@ -111,6 +112,32 @@ describe('GhostText', () => {
     });
     // Chunks are deltas, so the widget shows everything streamed so far.
     expect(ghostSuggestion(editor.state)).toEqual({ text: '续写内容', pos: 5 });
+  });
+
+  it('omits locale when the standalone extension has none configured', async () => {
+    const { provider, seen } = fake(['续写']);
+    const element = document.createElement('div');
+    document.body.appendChild(element);
+    editor = new Editor({
+      element,
+      content: CONTENT,
+      extensions: [
+        StarterKit,
+        GhostText.configure({
+          provider,
+          enabled: true,
+          delay: DELAY,
+          minChars: 3,
+          contextLength: 2000,
+          hint: HINT
+        })
+      ]
+    });
+
+    editor.commands.setTextSelection(endOf(editor));
+    await settle();
+
+    expect(seen[0]?.locale).toBeUndefined();
   });
 
   it('draws the suggestion as a widget carrying the configured hint', async () => {
@@ -375,6 +402,22 @@ describe('GhostText accept and dismiss', () => {
 });
 
 describe('GhostText runtime getters', () => {
+  it('reads the idle delay when scheduling, not only when the editor is built', async () => {
+    const { provider, stream } = fake(['续写']);
+    let delay = 100;
+    editor = makeEditor(provider, { delay: () => delay });
+
+    editor.commands.setTextSelection(endOf(editor));
+    await vi.advanceTimersByTimeAsync(20);
+    expect(stream).not.toHaveBeenCalled();
+
+    delay = 1;
+    editor.commands.insertContent('。');
+    await vi.advanceTimersByTimeAsync(1 + GAP * 2);
+
+    expect(stream).toHaveBeenCalledTimes(1);
+  });
+
   it('reads the enabled toggle on every idle tick, so it can be flipped after mount', async () => {
     const { provider, stream } = fake(['续写']);
     let on = false;

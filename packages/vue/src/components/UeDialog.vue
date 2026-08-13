@@ -3,9 +3,13 @@ import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 let seq = 0;
 
-const props = withDefaults(defineProps<{ modelValue: boolean; title?: string; width?: string }>(), {
-  width: '480px'
-});
+const props = withDefaults(
+  defineProps<{ modelValue: boolean; title?: string; width?: string; closeLabel?: string }>(),
+  {
+    width: '480px',
+    closeLabel: 'Close'
+  }
+);
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void;
@@ -94,7 +98,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
       >
         <header class="ue-dialog__header">
           <span :id="titleId">{{ title }}</span>
-          <button type="button" class="ue-dialog__close" @click="close">
+          <button
+            type="button"
+            class="ue-dialog__close"
+            :aria-label="closeLabel"
+            :title="closeLabel"
+            @click="close"
+          >
             <svg class="ue-ico" viewBox="0 0 24 24" aria-hidden="true">
               <line x1="6" y1="6" x2="18" y2="18" />
               <line x1="18" y1="6" x2="6" y2="18" />

@@ -1,26 +1,28 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import type { EditorView } from '@tiptap/pm/view';
 import { CellSelection } from '@tiptap/pm/tables';
 import {
   createTranslator,
-  createUltraKit,
+  createLeanUltraKit,
+  DEFAULT_SLASH_ITEMS,
+  isAIStreamTransaction,
   isSafeLinkUrl,
   resolveUploadOptions,
   rotateImage,
+  ULTRA_EDITOR_OPTIONS_META,
   type AITask,
   type ImageAlign,
   type SlashGroup,
   type SlashItem,
   type UploadError
-} from '@ultra-editor/core';
+} from '@ultra-editor/core/lean';
 import type { SuggestionProps, SuggestionKeyDownProps } from '@tiptap/suggestion';
 
 import UeToolbar from './components/UeToolbar.vue';
 import UeImageMenu from './components/UeImageMenu.vue';
 import UeTableMenu from './components/UeTableMenu.vue';
-import UeCropper from './components/UeCropper.vue';
 import UePrompt from './components/UePrompt.vue';
 import UeToasts from './components/UeToasts.vue';
 import UeSlashMenu from './components/UeSlashMenu.vue';
@@ -31,6 +33,11 @@ import { usePrompt } from './composables/usePrompt';
 import { useToasts } from './composables/useToasts';
 import { useAi } from './composables/useAi';
 import type { TableAction, UltraEditorProps } from './types';
+
+const loadCropper = () => import('./components/UeCropper.vue');
+const UeCropper = defineAsyncComponent(() =>
+  loadCropper().then(({ default: component }) => component)
+);
 
 const props = withDefaults(defineProps<UltraEditorProps>(), {
   modelValue: '',
@@ -57,7 +64,8 @@ const upload = computed(() =>
   resolveUploadOptions({
     upload: props.upload,
     fetchImage: props.fetchImage,
-    maxSize: props.maxImageSize
+    maxSize: props.maxImageSize,
+    concurrency: props.uploadConcurrency
   })
 );
 
@@ -136,21 +144,31 @@ const slashRender = () => ({
 
 /* Editor -------------------------------------------------------------------- */
 
+// Registered before `useEditor`, so a pending debounced value is serialized
+// before that composable tears down the ProseMirror schema during unmount.
+onBeforeUnmount(() => {
+  clearTimeout(debounceTimer);
+  flushEmit();
+});
+
 const editor = useEditor({
   content: props.modelValue,
   editable: props.editable,
   autofocus: props.autofocus,
-  extensions: createUltraKit({
-    placeholder: props.placeholder,
+  extensions: createLeanUltraKit({
+    placeholder: () => props.placeholder ?? t.value('editor.placeholder'),
     locale: props.locale,
     messages: props.messages,
+    translator: () => t.value,
+    lowlight: props.lowlight,
     upload: {
       // Delegated through the computed so a handler swapped in after mount is honoured.
       upload: (file, filename) => upload.value.upload(file, filename),
       // No `fetchImage` here on purpose: no core extension reads it. Re-encoding an
       // existing image is chrome, so rotate and the cropper call `upload.fetchImage`
       // off the computed directly — see `rotate()` and the `fetch-image` prop below.
-      maxSize: props.maxImageSize
+      maxSize: () => upload.value.maxSize,
+      concurrency: () => upload.value.concurrency
     },
     onUploadError: (error) => {
       emit('upload-error', error);
@@ -167,21 +185,19 @@ const editor = useEditor({
     // time — freezing today's values here would make both silently inert.
     ai: {
       provider: () => provider.value,
-      slash:
-        props.ai?.slash === false
-          ? { enabled: false }
-          : {
-              enabled: true,
-              items: props.ai?.slashItems,
-              onAI: (task) => ai.start(task),
-              labelOf: (item) => t.value(item.labelKey),
-              hasAI: () => hasAI.value,
-              render: slashRender
-            },
+      slash: {
+        enabled: () => props.ai?.slash !== false,
+        items: () => props.ai?.slashItems ?? DEFAULT_SLASH_ITEMS,
+        onAI: (task) => ai.start(task),
+        labelOf: (item) => t.value(item.labelKey),
+        hasAI: () => hasAI.value,
+        render: slashRender
+      },
       ghostText: {
         enabled: () => props.ai?.ghostText === true,
-        delay: props.ai?.ghostDelay,
-        hint: t.value('ai.ghostHint')
+        delay: () => props.ai?.ghostDelay ?? 800,
+        locale: () => props.locale,
+        hint: () => t.value('ai.ghostHint')
       }
     }
   }),
@@ -193,6 +209,7 @@ const editor = useEditor({
       // Right-click on an image opens the image menu, on a cell the table menu.
       // Everything else keeps the browser's own context menu.
       contextmenu: (view, event) => {
+        if (!view.editable) return false;
         const mouse = event as MouseEvent;
         const pos = imagePosAt(view, mouse);
         if (pos != null) {
@@ -205,8 +222,8 @@ const editor = useEditor({
       }
     }
   },
-  onUpdate: ({ editor: instance }) => {
-    scheduleEmit(instance.getHTML());
+  onUpdate: ({ transaction }) => {
+    if (transaction.docChanged && !isAIStreamTransaction(transaction)) scheduleEmit();
   }
 });
 
@@ -214,25 +231,36 @@ const editor = useEditor({
 // follow a locale change like every other component's do.
 const ai = useAi(editor, provider, t, toRef(props, 'locale'), () => props.editable);
 
+watch(t, () => {
+  const instance = editor.value;
+  /* v8 ignore else -- Vue stops this watcher before useEditor destroys the instance */
+  if (instance && !instance.isDestroyed) {
+    instance.view.dispatch(instance.state.tr.setMeta(ULTRA_EDITOR_OPTIONS_META, true));
+  }
+});
+
 /* Two-way binding ------------------------------------------------------------ */
 
 // Track what we last emitted so the incoming-prop watcher can tell "the parent
 // echoed our own value back" (ignore) from "the parent set new content" (apply).
 let lastEmitted = props.modelValue;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-let pending: string | null = null;
+let pending = false;
 
 function flushEmit() {
-  if (pending === null) return;
-  const html = pending;
-  pending = null;
+  if (!pending) return;
+  const instance = editor.value;
+  /* v8 ignore next -- this hook is registered before useEditor tears the instance down */
+  if (!instance) return;
+  pending = false;
+  const html = instance.getHTML();
+  lastEmitted = html;
   emit('update:modelValue', html);
   emit('change', html);
 }
 
-function scheduleEmit(html: string) {
-  lastEmitted = html;
-  pending = html;
+function scheduleEmit() {
+  pending = true;
   if (!props.debounce) {
     flushEmit();
     return;
@@ -241,11 +269,19 @@ function scheduleEmit(html: string) {
   debounceTimer = setTimeout(flushEmit, props.debounce);
 }
 
+function cancelPendingEmit() {
+  clearTimeout(debounceTimer);
+  debounceTimer = undefined;
+  pending = false;
+}
+
 watch(
   () => props.modelValue,
   (value) => {
     const instance = editor.value;
     if (!instance || value === lastEmitted) return;
+    cancelPendingEmit();
+    lastEmitted = value;
     if (value === instance.getHTML()) return;
     // `emitUpdate: false` stops the round trip; preserving the selection keeps the
     // caret where the author left it when a parent re-hydrates the model.
@@ -257,14 +293,6 @@ watch(
   () => props.editable,
   (value) => editor.value?.setEditable(value)
 );
-
-onBeforeUnmount(() => {
-  // Flush rather than drop: with `debounce` set, the last edits before an unmount
-  // would otherwise never reach v-model and be silently lost.
-  clearTimeout(debounceTimer);
-  flushEmit();
-  editor.value?.destroy();
-});
 
 /* Word count ----------------------------------------------------------------- */
 
@@ -369,6 +397,7 @@ const imageMenu = reactive({
 const rotating = ref(false);
 
 function openImageMenu(event: MouseEvent) {
+  void loadCropper();
   /* v8 ignore next */
   const attrs = editor.value?.getAttributes('image') ?? {};
   imageMenu.align = (attrs.align as ImageAlign) ?? null;
@@ -385,11 +414,53 @@ function openImageMenu(event: MouseEvent) {
 function selectedImage(): { pos: number; attrs: Record<string, unknown> } | null {
   const instance = editor.value;
   /* v8 ignore next */
-  if (!instance) return null;
+  if (!instance || !instance.isEditable) return null;
   const { from } = instance.state.selection;
   const node = instance.state.doc.nodeAt(from);
   if (node?.type.name !== 'image') return null;
   return { pos: from, attrs: node.attrs };
+}
+
+interface TrackedImage {
+  src: string;
+  update: (patch: Record<string, unknown>) => boolean;
+  stop: () => void;
+}
+
+function trackSelectedImage(): TrackedImage | null {
+  const instance = editor.value;
+  const selected = selectedImage();
+  const src = selected?.attrs.src;
+  if (!instance || !selected || typeof src !== 'string') return null;
+
+  let pos = selected.pos;
+  let valid = true;
+  const follow = ({ transaction }: { transaction: import('@tiptap/pm/state').Transaction }) => {
+    if (!transaction.docChanged) return;
+    const mapped = transaction.mapping.mapResult(pos, 1);
+    pos = mapped.pos;
+    if (mapped.deleted) valid = false;
+  };
+  instance.on('transaction', follow);
+
+  const stop = () => instance.off('transaction', follow);
+  return {
+    src,
+    stop,
+    update(patch) {
+      const node = instance.state.doc.nodeAt(pos);
+      if (
+        !valid ||
+        instance.isDestroyed ||
+        !instance.isEditable ||
+        node?.type.name !== 'image' ||
+        node.attrs.src !== src
+      ) {
+        return false;
+      }
+      return instance.chain().focus().setNodeSelection(pos).updateAttributes('image', patch).run();
+    }
+  };
 }
 
 function updateImage(patch: Record<string, unknown>) {
@@ -401,61 +472,81 @@ function updateImage(patch: Record<string, unknown>) {
 const setAlign = (align: ImageAlign) => updateImage({ align });
 
 async function setCaption() {
-  const target = selectedImage();
+  const target = trackSelectedImage();
   if (!target) return;
-
-  const value = await prompt.open({
-    title: t.value('image.captionTitle'),
-    label: t.value('image.captionLabel'),
-    value: (target.attrs.caption as string) ?? ''
-  });
-  if (value === null) return;
-  updateImage({ caption: value || null, alt: value || null });
+  try {
+    const value = await prompt.open({
+      title: t.value('image.captionTitle'),
+      label: t.value('image.captionLabel'),
+      value: (selectedImage()?.attrs.caption as string) ?? ''
+    });
+    if (value !== null) target.update({ caption: value || null, alt: value || null });
+  } finally {
+    target.stop();
+  }
 }
 
 async function rotate(degrees: 90 | -90) {
   if (rotating.value) return;
-  const target = selectedImage();
-  const src = target?.attrs.src as string | undefined;
-  if (!src) return;
+  const target = trackSelectedImage();
+  if (!target) return;
 
   rotating.value = true;
   const notice = toasts.loading(t.value('image.rotating'));
   try {
-    const blob = await rotateImage(src, degrees, upload.value.fetchImage);
+    const blob = await rotateImage(
+      target.src,
+      degrees,
+      upload.value.fetchImage,
+      props.imageProcessingLimits
+    );
     if (blob.size > upload.value.maxSize) throw new Error('too-large');
 
     const url = await upload.value.upload(blob, 'rotate.png');
-    updateImage({ src: url, width: null, height: null });
-    toasts.success(t.value('image.rotated'));
+    if (target.update({ src: url, width: null, height: null })) {
+      toasts.success(t.value('image.rotated'));
+    }
   } catch {
     toasts.error(t.value('image.rotateFailed'));
   } finally {
     toasts.dismiss(notice);
+    target.stop();
     rotating.value = false;
   }
 }
 
 const cropper = reactive({ visible: false, src: '' });
+let cropTarget: TrackedImage | null = null;
 
 function openCropper() {
-  const target = selectedImage();
-  const src = target?.attrs.src as string | undefined;
-  if (!src) return;
-  cropper.src = src;
+  cropTarget?.stop();
+  cropTarget = trackSelectedImage();
+  if (!cropTarget) return;
+  cropper.src = cropTarget.src;
   cropper.visible = true;
 }
 
+function setCropperVisible(visible: boolean) {
+  cropper.visible = visible;
+  if (!visible) {
+    cropTarget?.stop();
+    cropTarget = null;
+  }
+}
+
 async function onCropped(blob: Blob) {
+  const target = cropTarget;
+  cropTarget = null;
   const notice = toasts.loading(t.value('image.uploading'));
   try {
     if (blob.size > upload.value.maxSize) throw new Error('too-large');
     const url = await upload.value.upload(blob, 'crop.png');
-    updateImage({ src: url, width: null, height: null });
+    target?.update({ src: url, width: null, height: null });
   } catch {
     toasts.error(t.value('image.uploadFailed'));
   } finally {
     toasts.dismiss(notice);
+    target?.stop();
   }
 }
 
@@ -506,7 +597,9 @@ function openTableMenuAt(view: EditorView, event: MouseEvent): boolean {
 }
 
 function runTableAction(action: TableAction) {
-  const chain = editor.value?.chain().focus();
+  const instance = editor.value;
+  if (!instance?.isEditable) return;
+  const chain = instance.chain().focus();
   /* v8 ignore next */
   if (!chain) return;
   const actions: Record<TableAction, () => void> = {
@@ -525,11 +618,17 @@ function runTableAction(action: TableAction) {
   actions[action]();
 }
 
-const setCellColor = (color: string) =>
-  editor.value?.chain().focus().setCellAttribute('backgroundColor', color).run();
+const setCellColor = (color: string) => {
+  const instance = editor.value;
+  if (!instance?.isEditable) return;
+  instance.chain().focus().setCellAttribute('backgroundColor', color).run();
+};
 
-const clearCellColor = () =>
-  editor.value?.chain().focus().setCellAttribute('backgroundColor', null).run();
+const clearCellColor = () => {
+  const instance = editor.value;
+  if (!instance?.isEditable) return;
+  instance.chain().focus().setCellAttribute('backgroundColor', null).run();
+};
 
 /* Slash selection ------------------------------------------------------------ */
 
@@ -612,10 +711,13 @@ defineExpose({
     />
 
     <UeCropper
-      v-model="cropper.visible"
+      v-if="cropper.visible"
+      :model-value="cropper.visible"
       :src="cropper.src"
       :fetch-image="upload.fetchImage"
+      :limits="props.imageProcessingLimits"
       :t="t"
+      @update:model-value="setCropperVisible"
       @confirm="onCropped"
       @error="toasts.error"
     />

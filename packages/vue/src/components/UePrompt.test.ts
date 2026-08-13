@@ -13,7 +13,7 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-const input = () => document.body.querySelector<HTMLInputElement>('#ue-prompt-input');
+const input = () => document.body.querySelector<HTMLInputElement>('.ue-dialog .ue-input');
 const error = () => document.body.querySelector('.ue-field__error');
 const buttons = () => Array.from(document.body.querySelectorAll<HTMLButtonElement>('.ue-btn'));
 const cancelButton = () => buttons()[0];
@@ -60,6 +60,11 @@ describe('UePrompt', () => {
     expect(document.body.querySelector('.ue-field__label')?.textContent).toBe('链接地址');
     expect(input()?.placeholder).toBe('https://');
     expect(input()?.value).toBe('旧值');
+    expect(document.body.querySelector('label')?.htmlFor).toBe(input()?.id);
+    expect(input()?.id).toMatch(/^ue-prompt-input-\d+$/);
+    expect(document.body.querySelector('.ue-dialog__close')?.getAttribute('aria-label')).toBe(
+      '关闭'
+    );
   });
 
   it('selects the seeded value on open so the first keystroke replaces it', async () => {

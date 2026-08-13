@@ -2,11 +2,14 @@
 import { nextTick, ref, watch } from 'vue';
 import UeDialog from './UeDialog.vue';
 import type { PromptController } from '../composables/usePrompt';
-import type { Translator } from '@ultra-editor/core';
+import type { Translator } from '@ultra-editor/core/lean';
+
+let promptSeq = 0;
 
 const props = defineProps<{ controller: PromptController; t: Translator }>();
 
 const input = ref<HTMLInputElement>();
+const inputId = `ue-prompt-input-${(promptSeq += 1)}`;
 
 watch(
   () => props.controller.state.visible,
@@ -23,12 +26,13 @@ watch(
   <UeDialog
     :model-value="controller.state.visible"
     :title="controller.state.title"
+    :close-label="t('common.close')"
     width="420px"
     @update:model-value="controller.cancel()"
   >
-    <label class="ue-field__label" :for="'ue-prompt-input'">{{ controller.state.label }}</label>
+    <label class="ue-field__label" :for="inputId">{{ controller.state.label }}</label>
     <input
-      id="ue-prompt-input"
+      :id="inputId"
       ref="input"
       v-model="controller.state.input"
       class="ue-input"

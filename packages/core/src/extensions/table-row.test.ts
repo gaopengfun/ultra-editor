@@ -198,6 +198,38 @@ describe('ResizableTableRow drag', () => {
     expect(first.style.height).toBe('');
     expect(editor.getHTML()).not.toContain('height');
   });
+
+  it('does not start a drag while the editor is read-only', () => {
+    const [first] = rows();
+    layout(first, 0, 40);
+    editor.setEditable(false);
+
+    mouse(first, 'mousemove', 40);
+    mouse(first, 'mousedown', 40);
+    mouse(document, 'mousemove', 100);
+    mouse(document, 'mouseup', 100);
+
+    expect(editor.view.dom.style.cursor).toBe('');
+    expect(first.style.height).toBe('');
+    expect(editor.getHTML()).not.toContain('height');
+  });
+
+  it('cancels an active drag when the editor becomes read-only', () => {
+    const [first] = rows();
+    layout(first, 0, 40);
+
+    mouse(first, 'mousedown', 40);
+    mouse(document, 'mousemove', 90);
+    expect(first.style.height).toBe('90px');
+
+    editor.setEditable(false);
+    mouse(document, 'mousemove', 140);
+    mouse(document, 'mouseup', 140);
+
+    expect(first.style.height).toBe('');
+    expect(editor.view.dom.classList.contains('ue-row-resizing')).toBe(false);
+    expect(editor.getHTML()).not.toContain('height');
+  });
 });
 
 describe('ResizableTableRow indicator', () => {

@@ -52,6 +52,16 @@ describe('createOpenAIProvider', () => {
     expect(await collect(provider.stream(request, signal()))).toEqual(['a']);
   });
 
+  it.each([
+    [{ message: 'rate limited' }, 'ai-stream-error: rate limited'],
+    [{}, 'ai-stream-error: unknown']
+  ])('throws when the stream carries an error event', async (error, expected) => {
+    const fetch = () => Promise.resolve(sseResponse(`data: ${JSON.stringify({ error })}\n\n`));
+    const provider = createOpenAIProvider({ fetch });
+
+    await expect(collect(provider.stream(request, signal()))).rejects.toThrow(expected);
+  });
+
   it('builds the endpoint, headers and body from options and the prompt', async () => {
     let captured: { url: string; init: RequestInit } | undefined;
     const fetch = ((url: string, init: RequestInit) => {

@@ -141,6 +141,22 @@ describe('column block toolbar', () => {
     expect(cardCount()).toBe(MIN_COLUMNS);
   });
 
+  it('disables every toolbar action and preserves content while read-only', () => {
+    const before = editor.getHTML();
+    editor.setEditable(false);
+
+    expect(buttons().every((button) => button.disabled)).toBe(true);
+    buttons().forEach((button) =>
+      button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    );
+    expect(editor.getHTML()).toBe(before);
+
+    editor.setEditable(true);
+    expect(addButton().disabled).toBe(false);
+    expect(removeButton().disabled).toBe(false);
+    expect(deleteButton().disabled).toBe(false);
+  });
+
   it('keeps the selection alive when a button is pressed', () => {
     editor.commands.setTextSelection(3);
     const mousedown = new MouseEvent('mousedown', { bubbles: true, cancelable: true });

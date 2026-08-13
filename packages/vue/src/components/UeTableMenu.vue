@@ -3,7 +3,7 @@ import { nextTick, ref, watch } from 'vue';
 import UeMenu from './UeMenu.vue';
 import UeIcon from './UeIcon.vue';
 import UeColorPanel from './UeColorPanel.vue';
-import type { MessageKey, Translator } from '@ultra-editor/core';
+import type { MessageKey, Translator } from '@ultra-editor/core/lean';
 import type { TableAction } from '../types';
 
 const props = defineProps<{

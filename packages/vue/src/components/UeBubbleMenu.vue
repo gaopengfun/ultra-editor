@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { Editor } from '@tiptap/vue-3';
 import UeIcon from './UeIcon.vue';
-import type { AITask, MessageKey, Translator } from '@ultra-editor/core';
+import type { AITask, MessageKey, Translator } from '@ultra-editor/core/lean';
 
 /**
  * Selection bubble. Formatting on the left, the AI menu on the right — AI is a
@@ -137,6 +137,10 @@ onBeforeUnmount(() => {
         <button
           type="button"
           class="ue-bubble__btn ue-bubble__btn--ai"
+          :title="t('toolbar.ai')"
+          :aria-label="t('toolbar.ai')"
+          aria-haspopup="menu"
+          :aria-expanded="menuOpen"
           @mousedown.prevent
           @click="menuOpen = !menuOpen"
         >
@@ -148,6 +152,7 @@ onBeforeUnmount(() => {
       <div
         v-if="menuOpen"
         class="ue-menu"
+        role="menu"
         :style="{ left: '0', top: 'calc(100% + 6px)', position: 'absolute' }"
       >
         <button
@@ -155,6 +160,7 @@ onBeforeUnmount(() => {
           :key="task"
           type="button"
           class="ue-menu__item"
+          role="menuitem"
           @mousedown.prevent
           @click="pick(task)"
         >

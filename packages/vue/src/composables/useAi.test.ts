@@ -4,6 +4,7 @@ import { effectScope, shallowRef, type EffectScope } from 'vue';
 import {
   createTranslator,
   createUltraKit,
+  isAIStreamTransaction,
   type AIProvider,
   type AIRequest,
   type LocaleName,
@@ -53,6 +54,7 @@ function stepProvider() {
     wake?.();
     wake = null;
     await tick();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
   };
 
   return {
@@ -144,6 +146,51 @@ describe('useAi — writing into the document', () => {
 
     await step.end();
     expect(state.phase).toBe('done');
+  });
+
+  it('coalesces a synchronous burst into one provisional document update', async () => {
+    const chunks = Array.from({ length: 100 }, (_, index) => String(index % 10));
+    const burst: AIProvider = {
+      async *stream() {
+        for (const chunk of chunks) yield chunk;
+      }
+    };
+    const { ai, state, editor, html } = harness('<p>正文</p>', burst);
+    let provisionalUpdates = 0;
+    editor.value?.on('transaction', ({ transaction }) => {
+      if (transaction.docChanged && isAIStreamTransaction(transaction)) provisionalUpdates++;
+    });
+
+    ai.start('continue');
+    await tick();
+
+    expect(state.phase).toBe('done');
+    expect(state.text).toBe(chunks.join(''));
+    expect(html()).toContain(chunks.join(''));
+    expect(provisionalUpdates).toBe(1);
+  });
+
+  it('cancels a queued document render when the generation is discarded before paint', async () => {
+    const cancelFrame = vi.fn();
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => 42)
+    );
+    vi.stubGlobal('cancelAnimationFrame', cancelFrame);
+    const waiting: AIProvider = {
+      async *stream() {
+        yield 'queued';
+        await new Promise<void>(() => {});
+      }
+    };
+    const { ai, html } = harness('<p>正文</p>', waiting);
+
+    ai.start('continue');
+    await tick();
+    ai.discard();
+
+    expect(cancelFrame).toHaveBeenCalledWith(42);
+    expect(html()).toBe('<p>正文</p>');
   });
 
   it('replays an accepted generation as a single undo step', async () => {
@@ -297,6 +344,29 @@ describe('useAi — writing into the document', () => {
     expect(first.aborted()).toBe(true);
   });
 
+  it('discards and unlocks an insert generation before starting a transform', async () => {
+    const first = stepProvider();
+    const { ai, editor, provider, select, html } = harness('<p>正文内容</p>', first.provider);
+
+    ai.start('continue');
+    await first.emit('临时续写');
+    expect(editor.value?.isEditable).toBe(false);
+
+    const second = stepProvider();
+    provider.value = second.provider;
+    select(1, 3);
+    ai.start('improve');
+
+    expect(first.aborted()).toBe(true);
+    expect(editor.value?.isEditable).toBe(true);
+    expect(html()).toBe('<p>正文内容</p>');
+
+    await second.emit('改好');
+    await second.end();
+    ai.accept();
+    expect(html()).toBe('<p>改好内容</p>');
+  });
+
   it('stays in the running phase while a retried generation streams', async () => {
     const step = stepProvider();
     const { ai, state } = harness('<p>正文</p>', step.provider);
@@ -391,6 +461,56 @@ describe('useAi — transforming a selection', () => {
     await step.end();
   });
 
+  it('tracks the selection during the prompt without registering the listener twice', async () => {
+    const step = stepProvider();
+    const { ai, state, editor, select, html } = harness('<p>第一段落</p>', step.provider);
+    const instance = editor.value as Editor;
+    const on = vi.spyOn(instance, 'on');
+
+    select(2, 4);
+    ai.start('translate');
+    instance.commands.insertContentAt(1, '前缀');
+    state.instruction = 'English';
+    ai.submit();
+
+    const transactionRegistrations = on.mock.calls.filter(([event]) => event === 'transaction');
+    expect(transactionRegistrations).toHaveLength(1);
+
+    await step.emit('translated');
+    await step.end();
+    ai.accept();
+    expect(html()).toBe('<p>前缀第translated落</p>');
+  });
+
+  it('does not submit a prompted transform after its selection was replaced', () => {
+    const step = stepProvider();
+    const { ai, state, editor, select } = harness('<p>第一段落</p>', step.provider);
+
+    select(2, 4);
+    ai.start('translate');
+    editor.value?.commands.insertContentAt({ from: 2, to: 4 }, '替换');
+    state.instruction = 'English';
+    ai.submit();
+
+    expect(step.requests).toHaveLength(0);
+    expect(state.phase).toBe('error');
+    expect(state.error).toBe(t('ai.selectionChanged'));
+  });
+
+  it('follows edits from a collapsed transform target', async () => {
+    const step = stepProvider();
+    const { ai, state, editor, select } = harness('<p>第一段落</p>', step.provider);
+
+    select(3);
+    ai.start('translate');
+    editor.value?.commands.insertContentAt(1, '前缀');
+    state.instruction = 'English';
+    ai.submit();
+
+    expect(step.requests[0].text).toBe('');
+    await step.end();
+  });
+
   it('replaces only the selected words, without tearing the paragraph in three', async () => {
     const step = stepProvider();
     const { ai, select, html } = harness('<p>第一段落</p>', step.provider);
@@ -471,6 +591,23 @@ describe('useAi — transforming a selection', () => {
     ai.accept();
 
     expect(html()).toBe('<p>前缀第壹贰落</p>');
+  });
+
+  it('refuses to write back after the original selection is deleted', async () => {
+    const step = stepProvider();
+    const { ai, state, editor, select, html } = harness('<p>第一段落</p>', step.provider);
+
+    select(2, 4);
+    ai.start('improve');
+    editor.value?.commands.deleteRange({ from: 2, to: 4 });
+    const afterDelete = html();
+    await step.emit('不应写入');
+    await step.end();
+    ai.accept();
+
+    expect(html()).toBe(afterDelete);
+    expect(state.phase).toBe('error');
+    expect(state.error).toBe(t('ai.selectionChanged'));
   });
 
   it('discards a transform without touching the document', async () => {
@@ -680,5 +817,18 @@ describe('useAi — nothing to work with', () => {
     await tick();
 
     expect(step.aborted()).toBe(true);
+  });
+
+  it('discards provisional content and releases the editor lock when disposed', async () => {
+    const step = stepProvider();
+    const { ai, editor, scope, html } = harness('<p>正文</p>', step.provider);
+
+    ai.start('continue');
+    await step.emit('临时内容');
+    scope.stop();
+    await tick();
+
+    expect(editor.value?.isEditable).toBe(true);
+    expect(html()).toBe('<p>正文</p>');
   });
 });

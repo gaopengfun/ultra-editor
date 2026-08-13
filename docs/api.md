@@ -15,6 +15,9 @@
 | `upload`                  | `UploadHandler`      | base64 兜底           | 图片上传实现                                         |
 | `fetchImage`              | `ImageFetcher`       | `fetch` + credentials | 旋转 / 裁切时取回原图                                |
 | `maxImageSize`            | `number`             | `5 * 1024 * 1024`     | 超过则拒绝，单位字节                                 |
+| `uploadConcurrency`       | `number`             | `3`                   | 同时上传的图片数量，至少为 1                         |
+| `imageProcessingLimits`   | `ImageProcessingLimits` | 见下方默认值       | 旋转 / 裁切时的源图与 Canvas 资源上限                |
+| `lowlight`                | `LowlightInstance`    | 无预注册语言          | 按需注入代码高亮语言                                 |
 | `ai`                      | `UltraEditorAIProps` | —                     | AI 配置，不传则无任何 AI 界面                        |
 | `toolbar`                 | `boolean`            | `true`                | 是否显示工具栏                                       |
 | `statusbar`               | `boolean`            | `true`                | 是否显示字数统计栏                                   |
@@ -95,9 +98,21 @@ const editor = new Editor({
 | `placeholder` / `locale` / `messages` | 同组件 props                                            |
 | `upload`                              | `{ upload?, fetchImage?, maxSize?, accept? }`           |
 | `onUploadError`                       | 上传失败回调                                            |
-| `lowlight`                            | 自定义 lowlight 实例，用于裁剪代码高亮语言包体积        |
+| `lowlight`                            | 自定义 lowlight 实例，用于选择代码高亮语言              |
 | `ai`                                  | `{ provider, slash, ghostText }`                        |
 | `features`                            | `{ image, columns, table, codeBlock, color }`，默认全开 |
+
+core 默认入口包含 lowlight 的 common 语言集；lean 子路径和 Vue 组件默认不注册语言，避免把未使用的语法解析器带进应用包：
+
+```ts
+import { createLowlight, createUltraKit } from '@ultra-editor/core/lean';
+
+const lowlight = createLowlight();
+// lowlight.register('typescript', typescriptLanguage)
+const extensions = createUltraKit({ lowlight });
+```
+
+Vue 组件需要高亮时，从 `@ultra-editor/vue` 导入 `createLowlight`，注册实际使用的语言后传入同名 prop：`<UltraEditor :lowlight="lowlight" />`。
 
 ### 扩展
 
@@ -122,9 +137,11 @@ SELECTION_TASKS: AITask[]
 isSafeLinkUrl(url)    // 链接协议白名单
 isSafeImageUrl(url)   // 图片协议白名单（data: 仅允许 image/*）
 contrastText(bg)      // 依底色算出可读的文字色
-transformImage(src, { crop, rotate, flipH, flipV }, fetchImage?): Promise<Blob>
-rotateImage(src, 90 | -90, fetchImage?): Promise<Blob>
+transformImage(src, transform, fetchImage?, limits?): Promise<Blob>
+rotateImage(src, 90 | -90, fetchImage?, limits?): Promise<Blob>
 ```
+
+默认拒绝超过 8000 万像素的解码源图，并把导出结果等比限制在 1600 万像素、单边 8192 像素以内。可通过 `ImageProcessingLimits` 调整。
 
 ### 命令
 

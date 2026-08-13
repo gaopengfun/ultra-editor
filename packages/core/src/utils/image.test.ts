@@ -10,8 +10,8 @@ const OBJECT_URL = 'blob:ultra/1';
  */
 class FakeImage {
   crossOrigin: string | null = null;
-  naturalWidth = 40;
-  naturalHeight = 20;
+  naturalWidth = imageWidth;
+  naturalHeight = imageHeight;
   onload: (() => void) | null = null;
   onerror: (() => void) | null = null;
 
@@ -40,9 +40,13 @@ let canvasSize: { width: number; height: number } | undefined;
 let exported: Blob | null;
 let exportedType: string | undefined;
 let source: Blob;
+let imageWidth: number;
+let imageHeight: number;
 
 beforeEach(() => {
   loaded = [];
+  imageWidth = 40;
+  imageHeight = 20;
   decodes = true;
   context = fakeContext();
   contextAvailable = true;
@@ -191,6 +195,56 @@ describe('transformImage', () => {
 
     await expect(transformImage(SRC, {}, fetchImage)).rejects.toThrow('canvas-unavailable');
     expect(URL.revokeObjectURL).toHaveBeenCalledWith(OBJECT_URL);
+  });
+
+  it('rejects an oversized decoded source before allocating a canvas', async () => {
+    imageWidth = 10_000;
+    imageHeight = 10_000;
+
+    await expect(transformImage(SRC, {}, async () => source)).rejects.toThrow(
+      'image-too-large-to-process'
+    );
+    expect(HTMLCanvasElement.prototype.getContext).not.toHaveBeenCalled();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith(OBJECT_URL);
+  });
+
+  it('downscales the output canvas and draw target to the configured limits', async () => {
+    await transformImage(SRC, {}, async () => source, {
+      maxSourcePixels: 1000,
+      maxOutputPixels: 1000,
+      maxDimension: 20
+    });
+
+    expect(canvasSize).toEqual({ width: 20, height: 10 });
+    expect(context.drawImage).toHaveBeenCalledWith(
+      expect.anything(),
+      0,
+      0,
+      40,
+      20,
+      -10,
+      -5,
+      20,
+      10
+    );
+  });
+
+  it('uses safe defaults when a caller supplies invalid limits', async () => {
+    await transformImage(SRC, {}, async () => source, {
+      maxSourcePixels: Number.NaN,
+      maxOutputPixels: -1,
+      maxDimension: 0
+    });
+
+    expect(canvasSize).toEqual({ width: 40, height: 20 });
+  });
+
+  it('rejects an image with invalid decoded dimensions', async () => {
+    imageWidth = 0;
+
+    await expect(transformImage(SRC, {}, async () => source)).rejects.toThrow(
+      'image-too-large-to-process'
+    );
   });
 });
 

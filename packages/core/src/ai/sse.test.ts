@@ -46,6 +46,25 @@ describe('readSSE', () => {
     expect(out).toEqual(['你好']);
   });
 
+  it('joins multiple data fields into one event payload', async () => {
+    const out = await collect(
+      readSSE(
+        responseOf(['event: message\ndata: first line\ndata: second line\n\n']),
+        freshSignal()
+      )
+    );
+
+    expect(out).toEqual(['first line\nsecond line']);
+  });
+
+  it('removes only one optional space after the data field colon', async () => {
+    const out = await collect(
+      readSSE(responseOf(['data:  leading and trailing  \n\n']), freshSignal())
+    );
+
+    expect(out).toEqual([' leading and trailing  ']);
+  });
+
   it('emits the final event even without a trailing blank line', async () => {
     // A lenient server closing right after the last `data:`. Before the flush
     // fix this dropped 'b' entirely.
@@ -74,6 +93,62 @@ describe('readSSE', () => {
     await expect(
       collect(readSSE({ body: null } as unknown as Response, freshSignal()))
     ).rejects.toThrow('ai-no-stream-body');
+  });
+
+  it('rejects an unterminated event that grows beyond the buffer limit', async () => {
+    await expect(
+      collect(readSSE(responseOf([`data: ${'x'.repeat(1_000_000)}`]), freshSignal()))
+    ).rejects.toThrow('ai-sse-event-too-large');
+  });
+
+  it('checks the limit again after flushing an incomplete UTF-8 tail', async () => {
+    const prefix = encoder.encode(`data: ${'x'.repeat(999_994)}`);
+    const bytes = new Uint8Array(prefix.length + 1);
+    bytes.set(prefix);
+    bytes[prefix.length] = 0xe4;
+
+    await expect(collect(readSSE(responseOf([bytes]), freshSignal()))).rejects.toThrow(
+      'ai-sse-event-too-large'
+    );
+  });
+
+  it('does not count already completed events against the partial-event limit', async () => {
+    const payload = 'x'.repeat(600_000);
+    const out = await collect(
+      readSSE(responseOf([`data: ${payload}\n\ndata: ${payload}\n\n`]), freshSignal())
+    );
+
+    expect(out).toEqual([payload, payload]);
+  });
+
+  it('cancels immediately when the signal was already aborted', async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      }
+    });
+    const controller = new AbortController();
+    controller.abort();
+
+    expect((await readSSE({ body } as unknown as Response, controller.signal).next()).done).toBe(
+      true
+    );
+    expect(cancelled).toBe(true);
+  });
+
+  it('swallows a failed cancellation when the signal was already aborted', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        throw new Error('cancel-failed');
+      }
+    });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      readSSE({ body } as unknown as Response, controller.signal).next()
+    ).resolves.toMatchObject({ done: true });
   });
 
   it('stops and cancels the reader when aborted mid-stream, dropping the trailing partial', async () => {
@@ -123,20 +198,40 @@ describe('assertOk', () => {
   });
 
   it('throws with the status and a body truncated to 300 chars', async () => {
-    const response = {
-      ok: false,
-      status: 429,
-      text: () => Promise.resolve('e'.repeat(500))
-    } as unknown as Response;
+    const response = new Response('e'.repeat(500), { status: 429 });
     await expect(assertOk(response)).rejects.toThrow(/^ai-request-failed: 429 e{300}$/);
   });
 
+  it('includes a short error body that closes normally', async () => {
+    const response = new Response('temporarily unavailable', { status: 503 });
+    await expect(assertOk(response)).rejects.toThrow(
+      'ai-request-failed: 503 temporarily unavailable'
+    );
+  });
+
+  it('cancels an error body once enough detail has been read', async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('e'.repeat(5000)));
+      },
+      cancel() {
+        cancelled = true;
+      }
+    });
+    const response = { ok: false, status: 413, body } as unknown as Response;
+
+    await expect(assertOk(response)).rejects.toThrow(/^ai-request-failed: 413 e{300}$/);
+    expect(cancelled).toBe(true);
+  });
+
   it('still throws when the error body cannot be read', async () => {
-    const response = {
-      ok: false,
-      status: 500,
-      text: () => Promise.reject(new Error('no body'))
-    } as unknown as Response;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.error(new Error('no body'));
+      }
+    });
+    const response = { ok: false, status: 500, body } as unknown as Response;
     await expect(assertOk(response)).rejects.toThrow('ai-request-failed: 500');
   });
 });

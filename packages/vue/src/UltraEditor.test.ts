@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import type { Editor } from '@tiptap/vue-3';
-import type { AIProvider, AITask, UploadError } from '@ultra-editor/core';
+import { createLowlight } from '@ultra-editor/core/lean';
+import {
+  DEFAULT_SLASH_ITEMS,
+  type AIProvider,
+  type AITask,
+  type UploadError
+} from '@ultra-editor/core';
 import UltraEditor from './UltraEditor.vue';
 import type { UltraEditorProps } from './types';
 
@@ -68,10 +74,21 @@ function paced(chunks: string[]) {
     await vi.waitFor(() => expect(gates.length).toBeGreaterThan(0), { interval: 1 });
     gates.shift()?.();
     await vi.waitFor(() => expect(consumed).toBe(target), { interval: 1 });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     await nextTick();
   }
 
   return { provider: source, next };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 interface EditorApi {
@@ -175,6 +192,23 @@ describe('chrome', () => {
     expect(editor.getHTML()).toBe('<p>正文</p>');
   });
 
+  it('keeps syntax languages opt-in and accepts a host lowlight instance', async () => {
+    await mountEditor();
+    const defaultCodeBlock = editor.extensionManager.extensions.find(
+      (extension) => extension.name === 'codeBlock'
+    );
+    expect(defaultCodeBlock?.options.lowlight.listLanguages()).toEqual([]);
+
+    const lowlight = createLowlight();
+    lowlight.register('custom', (() => ({ name: 'custom', contains: [] })) as never);
+    wrapper.unmount();
+    await mountEditor({ lowlight });
+    const customCodeBlock = editor.extensionManager.extensions.find(
+      (extension) => extension.name === 'codeBlock'
+    );
+    expect(customCodeBlock?.options.lowlight.listLanguages()).toEqual(['custom']);
+  });
+
   it('drops the toolbar when the host turns it off', async () => {
     await mountEditor({ toolbar: false });
     expect(wrapper.find('.ue-toolbar').exists()).toBe(false);
@@ -221,6 +255,16 @@ describe('chrome', () => {
     await mountEditor({ modelValue: '', placeholder: '写点什么…' });
 
     expect(wrapper.get('.ue-content p').attributes('data-placeholder')).toBe('写点什么…');
+  });
+
+  it('updates the placeholder after the editor was built', async () => {
+    await mountEditor({ modelValue: '', placeholder: '第一版' });
+
+    await wrapper.setProps({ placeholder: '第二版' });
+    editor.view.dispatch(editor.state.tr.setMeta('refresh-placeholder', true));
+    await nextTick();
+
+    expect(wrapper.get('.ue-content p').attributes('data-placeholder')).toBe('第二版');
   });
 
   it('puts the caret in the document when asked to autofocus', async () => {
@@ -285,14 +329,17 @@ describe('two-way binding', () => {
 
   it('holds the emit back until the debounce window closes', async () => {
     await mountEditor({ debounce: 40 });
+    const serialize = vi.spyOn(editor, 'getHTML');
 
     editor.commands.insertContent('一');
     editor.commands.insertContent('二');
     await nextTick();
     expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    expect(serialize).not.toHaveBeenCalled();
 
     await new Promise((resolve) => setTimeout(resolve, 60));
 
+    expect(serialize).toHaveBeenCalledTimes(1);
     expect(wrapper.emitted('update:modelValue')).toHaveLength(1);
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['<p>一二正文</p>']);
   });
@@ -307,6 +354,20 @@ describe('two-way binding', () => {
     wrapper.unmount();
 
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['<p>临别一笔正文</p>']);
+  });
+
+  it('cancels a stale debounced edit when the parent replaces the document', async () => {
+    await mountEditor({ debounce: 5000 });
+    editor.commands.insertContent('本地旧内容');
+    await nextTick();
+
+    await wrapper.setProps({ modelValue: '<p>外部新内容</p>' });
+    expect(editor.getHTML()).toBe('<p>外部新内容</p>');
+
+    wrapper.unmount();
+
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    expect(wrapper.emitted('change')).toBeUndefined();
   });
 });
 
@@ -418,6 +479,28 @@ describe('locale and messages', () => {
     expect(statusbar()).toContain('words');
   });
 
+  it('refreshes mounted code-block and column node-view labels at runtime', async () => {
+    await mountEditor({
+      modelValue:
+        '<pre><code>x</code></pre><div class="ue-columns"><div class="ue-column"><p>a</p></div></div>'
+    });
+    const codeLanguage = () =>
+      editor.view.dom.querySelector<HTMLButtonElement>('.ue-codeblock__lang')?.title;
+    const addColumn = () =>
+      editor.view.dom.querySelector<HTMLButtonElement>('.ue-columns__btn')?.title;
+    expect(codeLanguage()).toBe('代码语言');
+    expect(addColumn()).toBe('加一栏');
+
+    await wrapper.setProps({
+      locale: 'en',
+      messages: { 'codeBlock.language': 'Syntax', 'columns.add': 'Add card' }
+    });
+    await nextTick();
+
+    expect(codeLanguage()).toBe('Syntax');
+    expect(addColumn()).toBe('Add card');
+  });
+
   it('lets a host override a single string without forking a locale', async () => {
     await mountEditor({ messages: { 'toolbar.bold': '粗体' } });
 
@@ -426,7 +509,7 @@ describe('locale and messages', () => {
 });
 
 describe('link', () => {
-  const promptInput = () => document.body.querySelector<HTMLInputElement>('#ue-prompt-input');
+  const promptInput = () => document.body.querySelector<HTMLInputElement>('.ue-dialog .ue-input');
 
   async function typeLink(value: string) {
     promptInput()!.value = value;
@@ -580,6 +663,17 @@ describe('the upload seam', () => {
     expect(editor.getHTML()).toBe('<p>正文</p>');
   });
 
+  it('uses a max image size changed after mount', async () => {
+    const upload = vi.fn(async () => 'https://cdn.example.com/a.png');
+    await mountEditor({ upload, maxImageSize: 1024 });
+
+    await wrapper.setProps({ maxImageSize: 1 });
+    await pick([file('now-too-big.png', 'image/png', 'large')]);
+
+    expect(upload).not.toHaveBeenCalled();
+    expect((wrapper.emitted('upload-error') as [[UploadError]])[0][0].code).toBe('too-large');
+  });
+
   it('reports an unsupported file as an error and a toast', async () => {
     await mountEditor();
 
@@ -656,6 +750,18 @@ describe('the image context menu', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
+  it('leaves the browser menu alone and opens no image actions in read-only mode', async () => {
+    await mountEditor({ modelValue: IMAGE, editable: false });
+    pointAt(posOf('image'));
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+
+    imageInDom().dispatchEvent(event);
+    await nextTick();
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.body.querySelector('.ue-menu')).toBeNull();
+  });
+
   it('finds the image when the DOM maps to the position just after it', async () => {
     await mountEditor({ modelValue: IMAGE });
     pointAt(null);
@@ -703,7 +809,7 @@ describe('the image context menu', () => {
     menuItem('添加图注')?.click();
     await nextTick();
 
-    const input = document.body.querySelector<HTMLInputElement>('#ue-prompt-input')!;
+    const input = document.body.querySelector<HTMLInputElement>('.ue-dialog .ue-input')!;
     input.value = '一张配图';
     input.dispatchEvent(new Event('input'));
     await nextTick();
@@ -725,7 +831,7 @@ describe('the image context menu', () => {
     menuItem('编辑图注')?.click();
     await nextTick();
 
-    const input = document.body.querySelector<HTMLInputElement>('#ue-prompt-input')!;
+    const input = document.body.querySelector<HTMLInputElement>('.ue-dialog .ue-input')!;
     input.value = '';
     input.dispatchEvent(new Event('input'));
     await nextTick();
@@ -760,7 +866,7 @@ describe('the image context menu', () => {
     menuItem('添加图注')?.click();
     await nextTick();
 
-    expect(document.body.querySelector('#ue-prompt-input')).toBeNull();
+    expect(document.body.querySelector('.ue-dialog .ue-input')).toBeNull();
   });
 
   it('acts on nothing when the document moved on under the open menu', async () => {
@@ -776,6 +882,20 @@ describe('the image context menu', () => {
     await flush();
 
     expect(editor.getHTML()).toBe(before);
+  });
+
+  it('does not run an image action after the host switches the open editor to read-only', async () => {
+    await mountEditor({ modelValue: IMAGE });
+    pointAt(posOf('image'));
+    rightClick(imageInDom());
+    await nextTick();
+    const align = menuItem('居中')!;
+
+    await wrapper.setProps({ editable: false });
+    align.click();
+    await flush();
+
+    expect(editor.getHTML()).not.toContain('data-align');
   });
 });
 
@@ -824,6 +944,21 @@ describe('rotating and cropping an image', () => {
     await nextTick();
   }
 
+  const imageSources = () => {
+    const sources: string[] = [];
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'image') sources.push(node.attrs.src as string);
+    });
+    return sources;
+  };
+
+  async function cropperImage() {
+    await vi.waitFor(() =>
+      expect(document.body.querySelector<HTMLImageElement>('.ue-crop__img')).not.toBeNull()
+    );
+    return document.body.querySelector<HTMLImageElement>('.ue-crop__img')!;
+  }
+
   it('rotates through the host’s fetcher and upload handler, and swaps the src', async () => {
     const fetchImage = vi.fn(async () => new Blob(['jpeg'], { type: 'image/jpeg' }));
     const upload = vi.fn(async () => 'https://cdn.example.com/rotated.png');
@@ -852,6 +987,61 @@ describe('rotating and cropping an image', () => {
     await flush();
 
     expect(upload).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies a delayed rotation to the image that started it, not the current selection', async () => {
+    const pending = deferred<string>();
+    const upload = vi.fn(() => pending.promise);
+    await mountEditor({
+      modelValue: '<img src="/first.png"><img src="/second.png">',
+      upload,
+      fetchImage: async () => new Blob(['jpeg'])
+    });
+    const positions: number[] = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'image') positions.push(pos);
+    });
+    pointAt(positions[0]);
+    rightClick(editor.view.dom.querySelector('img')!);
+    await nextTick();
+
+    menuItem('顺时针旋转 90°')?.click();
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+    editor.commands.insertContentAt(0, '<p>前置</p>');
+    const movedPositions: number[] = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'image') movedPositions.push(pos);
+    });
+    editor.commands.setNodeSelection(movedPositions[1]);
+    pending.resolve('https://cdn.example.com/rotated-first.png');
+    await flushPromises();
+    await flush();
+
+    expect(imageSources()).toEqual(['https://cdn.example.com/rotated-first.png', '/second.png']);
+  });
+
+  it('drops a delayed rotation when its original image was deleted', async () => {
+    const pending = deferred<string>();
+    const upload = vi.fn(() => pending.promise);
+    await mountEditor({
+      modelValue: '<img src="/first.png"><img src="/second.png">',
+      upload,
+      fetchImage: async () => new Blob(['jpeg'])
+    });
+    const first = posOf('image');
+    pointAt(first);
+    rightClick(editor.view.dom.querySelector('img')!);
+    await nextTick();
+
+    menuItem('顺时针旋转 90°')?.click();
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+    editor.commands.deleteRange({ from: first, to: first + 1 });
+    pending.resolve('https://cdn.example.com/orphaned.png');
+    await flushPromises();
+    await flush();
+
+    expect(imageSources()).toEqual(['/second.png']);
+    expect(toasts()).not.toContain('已旋转');
   });
 
   it('honours an image fetcher swapped in after the editor was built', async () => {
@@ -905,7 +1095,10 @@ describe('rotating and cropping an image', () => {
     menuItem('裁切')?.click();
     await flushPromises();
 
-    const img = document.body.querySelector<HTMLImageElement>('.ue-crop__img')!;
+    wrapper.findComponent({ name: 'UeCropper' }).vm.$emit('update:modelValue', true);
+    await nextTick();
+
+    const img = await cropperImage();
     Object.defineProperty(img, 'naturalWidth', { value: 800, configurable: true });
     Object.defineProperty(img, 'naturalHeight', { value: 600, configurable: true });
     img.dispatchEvent(new Event('load'));
@@ -920,6 +1113,40 @@ describe('rotating and cropping an image', () => {
     expect(document.body.querySelector('.ue-crop__stage')).toBeNull();
   });
 
+  it('applies a delayed crop to the image that opened the cropper', async () => {
+    const pending = deferred<string>();
+    const upload = vi.fn(() => pending.promise);
+    await mountEditor({
+      modelValue: '<img src="/first.png"><img src="/second.png">',
+      upload,
+      fetchImage: async () => new Blob(['jpeg'])
+    });
+    const positions: number[] = [];
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'image') positions.push(pos);
+    });
+    pointAt(positions[0]);
+    rightClick(editor.view.dom.querySelector('img')!);
+    await nextTick();
+    menuItem('裁切')?.click();
+    await flushPromises();
+
+    const img = await cropperImage();
+    Object.defineProperty(img, 'naturalWidth', { value: 800, configurable: true });
+    Object.defineProperty(img, 'naturalHeight', { value: 600, configurable: true });
+    img.dispatchEvent(new Event('load'));
+    await nextTick();
+    dialogButton('确定')?.click();
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+
+    editor.commands.setNodeSelection(positions[1]);
+    pending.resolve('https://cdn.example.com/cropped-first.png');
+    await flushPromises();
+    await flush();
+
+    expect(imageSources()).toEqual(['https://cdn.example.com/cropped-first.png', '/second.png']);
+  });
+
   it('reports a failed upload of a crop', async () => {
     const upload = vi.fn(async () => {
       throw new Error('502');
@@ -929,7 +1156,7 @@ describe('rotating and cropping an image', () => {
     menuItem('裁切')?.click();
     await flushPromises();
 
-    const img = document.body.querySelector<HTMLImageElement>('.ue-crop__img')!;
+    const img = await cropperImage();
     Object.defineProperty(img, 'naturalWidth', { value: 800, configurable: true });
     Object.defineProperty(img, 'naturalHeight', { value: 600, configurable: true });
     img.dispatchEvent(new Event('load'));
@@ -950,7 +1177,7 @@ describe('rotating and cropping an image', () => {
     menuItem('裁切')?.click();
     await flushPromises();
 
-    const img = document.body.querySelector<HTMLImageElement>('.ue-crop__img')!;
+    const img = await cropperImage();
     Object.defineProperty(img, 'naturalWidth', { value: 800, configurable: true });
     Object.defineProperty(img, 'naturalHeight', { value: 600, configurable: true });
     img.dispatchEvent(new Event('load'));
@@ -970,7 +1197,7 @@ describe('rotating and cropping an image', () => {
     menuItem('裁切')?.click();
     await flushPromises();
 
-    const img = document.body.querySelector<HTMLImageElement>('.ue-crop__img')!;
+    const img = await cropperImage();
     Object.defineProperty(img, 'naturalWidth', { value: 800, configurable: true });
     Object.defineProperty(img, 'naturalHeight', { value: 600, configurable: true });
     img.dispatchEvent(new Event('load'));
@@ -1033,6 +1260,18 @@ describe('the table context menu', () => {
     expect(menuItem('删除表格')).toBeDefined();
   });
 
+  it('leaves the browser menu alone and opens no table actions in read-only mode', async () => {
+    await mountEditor({ modelValue: TABLE, editable: false });
+    pointAt(cellPositions()[0] + 2);
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+
+    editor.view.dom.querySelector('th')?.dispatchEvent(event);
+    await nextTick();
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(document.body.querySelector('.ue-menu')).toBeNull();
+  });
+
   it('opens no menu when the pointer maps to no position at all', async () => {
     await mountEditor({ modelValue: TABLE });
     pointAt(null);
@@ -1086,6 +1325,17 @@ describe('the table context menu', () => {
     await flush();
 
     expect(editor.getHTML()).not.toContain('<table>');
+  });
+
+  it('does not run a table action after the host switches the open editor to read-only', async () => {
+    await openTableMenu();
+    const remove = menuItem('删除表格')!;
+
+    await wrapper.setProps({ editable: false });
+    remove.click();
+    await flush();
+
+    expect(editor.getHTML()).toContain('<table');
   });
 
   it('toggles the header row off', async () => {
@@ -1162,6 +1412,25 @@ describe('the table context menu', () => {
     Array.from(document.body.querySelectorAll<HTMLButtonElement>('.ue-color-actions .ue-btn'))
       .find((entry) => entry.textContent?.trim() === '清除底色')
       ?.click();
+    await flush();
+
+    expect(editor.getHTML()).not.toContain('background-color');
+  });
+
+  it('does not paint or clear a cell after the host switches to read-only', async () => {
+    await openTableMenu();
+    menuItem('单元格底色')!.click();
+    await nextTick();
+    const paint = document.body.querySelector<HTMLButtonElement>(
+      '.ue-swatch[aria-label="#facc15"]'
+    )!;
+    const clear = Array.from(
+      document.body.querySelectorAll<HTMLButtonElement>('.ue-color-actions .ue-btn')
+    ).find((entry) => entry.textContent?.trim() === '清除底色')!;
+
+    await wrapper.setProps({ editable: false });
+    paint.click();
+    clear.click();
     await flush();
 
     expect(editor.getHTML()).not.toContain('background-color');
@@ -1390,6 +1659,20 @@ describe('the slash palette', () => {
     expect(slashMenu()).toBeNull();
     expect(editor.getHTML()).toBe('<p>/</p>');
   });
+
+  it('can be enabled with a new item list after the editor was built', async () => {
+    await openPalette({ ai: { slash: false } });
+    expect(slashMenu()).toBeNull();
+
+    const table = DEFAULT_SLASH_ITEMS.find((item) => item.key === 'table')!;
+    await wrapper.setProps({ ai: { slash: true, slashItems: [table] } });
+    editor.commands.setContent('<p></p>');
+    editor.commands.focus();
+    editor.commands.insertContent('/');
+    await settle();
+
+    expect(slashItems().map((item) => item.textContent?.trim())).toEqual(['表格']);
+  });
 });
 
 describe('AI', () => {
@@ -1420,6 +1703,16 @@ describe('AI', () => {
     await wrapper.setProps({ ai: { provider: provider(['x']), ghostText: true } });
 
     expect(enabled()).toBe(true);
+  });
+
+  it('reads a changed ghost delay without rebuilding the extension', async () => {
+    await mountEditor({ ai: { provider: provider(['x']) } });
+    const ghost = editor.extensionManager.extensions.find((one) => one.name === 'ghostText');
+    const delay = () => (ghost!.options as { delay: () => number }).delay();
+
+    expect(delay()).toBe(800);
+    await wrapper.setProps({ ai: { provider: provider(['x']), ghostDelay: 5 } });
+    expect(delay()).toBe(5);
   });
 
   it('completes the sentence with ghost text once the author pauses', async () => {
@@ -1455,10 +1748,12 @@ describe('AI', () => {
 
     api().runAI('continue');
     await vi.waitFor(() => expect(panelButton('接受')).toBeDefined());
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
 
     panelButton('接受')?.click();
     await flush();
     expect(editor.getHTML()).toBe('<p>正文</p><p>生成的</p>');
+    expect(wrapper.emitted('update:modelValue')).toEqual([['<p>正文</p><p>生成的</p>']]);
 
     editor.commands.undo();
 
@@ -1472,11 +1767,13 @@ describe('AI', () => {
 
     api().runAI('continue');
     await vi.waitFor(() => expect(panelButton('丢弃')).toBeDefined());
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
 
     panelButton('丢弃')?.click();
     await flush();
 
     expect(editor.getHTML()).toBe(before);
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
     expect(aiPanel()).toBeNull();
     expect(editor.isEditable).toBe(true);
   });

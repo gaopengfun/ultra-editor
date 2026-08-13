@@ -17,7 +17,7 @@ const PNG = 'data:image/png;base64,iVBORw0KGgo=';
 function makeEditor(content = '', options: Partial<ImageOptions> = {}) {
   const element = document.createElement('div');
   document.body.appendChild(element);
-  return new Editor({
+  const editor = new Editor({
     element,
     content,
     extensions: [
@@ -25,6 +25,8 @@ function makeEditor(content = '', options: Partial<ImageOptions> = {}) {
       ImageFigure.configure({ inline: false, resize: { ...DEFAULT_IMAGE_RESIZE }, ...options })
     ]
   });
+  editors.push(editor);
+  return editor;
 }
 
 const container = (editor: Editor) =>
@@ -41,7 +43,16 @@ function drag(handle: HTMLElement, fromX: number, toX: number) {
   document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 }
 
+function touch(target: EventTarget, type: string, clientX: number) {
+  const event = new Event(type, { bubbles: true, cancelable: true }) as TouchEvent;
+  Object.defineProperty(event, 'touches', {
+    value: type === 'touchend' || type === 'touchcancel' ? [] : [{ clientX, clientY: 0 }]
+  });
+  target.dispatchEvent(event);
+}
+
 let restoreLayout: () => void;
+const editors: Editor[] = [];
 
 beforeEach(() => {
   document.body.innerHTML = '';
@@ -70,6 +81,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  while (editors.length) {
+    const editor = editors.pop();
+    if (editor && !editor.isDestroyed) editor.destroy();
+  }
   restoreLayout();
   env.browser = true;
 });
@@ -244,6 +259,57 @@ describe('ImageFigure resize node view', () => {
     // 2:1 was locked in by DEFAULT_IMAGE_RESIZE, so height follows width.
     expect(html).toContain('height="150"');
     expect(image(editor)?.style.width).toBe('300px');
+  });
+
+  it('finishes a touch resize and removes its document touch listener', () => {
+    const editor = makeEditor('<img src="/a.png" width="200" height="100">');
+    const handle = container(editor)?.querySelector<HTMLElement>('[data-resize-handle="right"]');
+    const remove = vi.spyOn(document, 'removeEventListener');
+
+    touch(handle!, 'touchstart', 300);
+    touch(document, 'touchmove', 400);
+    touch(document, 'touchend', 400);
+
+    expect(editor.getHTML()).toContain('width="300"');
+    expect(remove).toHaveBeenCalledWith('touchmove', expect.any(Function));
+  });
+
+  it('cancels a live resize and hides handles when the editor becomes read-only', () => {
+    const editor = makeEditor('<img src="/a.png" width="200" height="100">');
+    const handle = container(editor)?.querySelector<HTMLElement>('[data-resize-handle="right"]');
+
+    handle!.dispatchEvent(new MouseEvent('mousedown', { clientX: 300, clientY: 0, bubbles: true }));
+    document.dispatchEvent(
+      new MouseEvent('mousemove', { clientX: 400, clientY: 0, bubbles: true })
+    );
+    expect(image(editor)?.style.width).toBe('300px');
+
+    editor.setEditable(false);
+
+    expect(image(editor)?.style.width).toBe('200px');
+    expect(editor.getHTML()).toContain('width="200"');
+    expect(
+      Array.from(container(editor)!.querySelectorAll<HTMLElement>('[data-resize-handle]')).every(
+        (entry) => entry.hidden
+      )
+    ).toBe(true);
+  });
+
+  it('restores empty dimensions when a size-less image becomes read-only mid-resize', () => {
+    const editor = makeEditor('<img src="/a.png">');
+    const img = image(editor)!;
+    img.style.width = '200px';
+    img.style.height = '100px';
+    const handle = container(editor)?.querySelector<HTMLElement>('[data-resize-handle="right"]');
+
+    handle!.dispatchEvent(new MouseEvent('mousedown', { clientX: 300, clientY: 0, bubbles: true }));
+    document.dispatchEvent(
+      new MouseEvent('mousemove', { clientX: 400, clientY: 0, bubbles: true })
+    );
+    editor.setEditable(false);
+
+    expect(img.style.width).toBe('');
+    expect(img.style.height).toBe('');
   });
 
   it('shows the caption on the editing surface, where renderHTML never runs', () => {
@@ -426,5 +492,18 @@ describe('ImageFigure node view guards', () => {
     const paragraph = editor.state.schema.nodes.paragraph.create();
 
     expect(nodeView.onUpdate?.(paragraph, [], DecorationSet.empty)).toBe(false);
+  });
+
+  it('unsubscribes the same editor-update listener that it registered', () => {
+    const editor = makeEditor('<img src="/a.png">');
+    const on = vi.spyOn(editor, 'on');
+    const off = vi.spyOn(editor, 'off');
+    const nodeView = detachedNodeView(editor);
+    const registration = on.mock.calls.find(([event]) => event === 'update');
+
+    expect(registration).toBeDefined();
+    nodeView.destroy();
+
+    expect(off).toHaveBeenCalledWith('update', registration?.[1]);
   });
 });

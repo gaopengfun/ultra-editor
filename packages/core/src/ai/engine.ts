@@ -86,6 +86,7 @@ export async function collectAI(
   request: AIRequest,
   signal?: AbortSignal
 ): Promise<string> {
+  if (signal?.aborted) return '';
   const controller = new AbortController();
   const forward = () => controller.abort();
   signal?.addEventListener('abort', forward, { once: true });

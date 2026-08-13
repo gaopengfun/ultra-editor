@@ -26,7 +26,8 @@ const TASK_INSTRUCTIONS: Record<AITask, (request: AIRequest) => string> = {
   write: (r) =>
     `Write a passage about the following topic.${r.locale ? ` Write in ${r.locale}.` : ''}\n\nTopic: ${r.instruction || r.text}`,
 
-  improve: (r) => `Improve the writing — clearer, tighter, better flow. Keep the meaning.\n\n${r.text}`,
+  improve: (r) =>
+    `Improve the writing — clearer, tighter, better flow. Keep the meaning.\n\n${r.text}`,
 
   translate: (r) =>
     `Translate the following text into ${r.instruction || 'English'}. Output the translation only.\n\n${r.text}`,

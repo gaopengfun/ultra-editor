@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { createUltraKit } from '../kit';
-import { aiStreamRange, isAIStreaming } from './ai-stream';
+import { aiStreamRange, isAIStreaming, isAIStreamTransaction } from './ai-stream';
 
 function makeEditor(content: string) {
   const element = document.createElement('div');
@@ -133,6 +133,19 @@ describe('AIStream', () => {
 
     editor.commands.undo();
     expect(editor.getHTML()).toBe(before);
+  });
+
+  it('marks provisional transactions but leaves the accepted edit ordinary', () => {
+    const provisional: boolean[] = [];
+    editor.on('transaction', ({ transaction }) => {
+      if (transaction.docChanged) provisional.push(isAIStreamTransaction(transaction));
+    });
+
+    editor.commands.aiStreamStart();
+    editor.commands.aiStreamSet('生成的内容');
+    editor.commands.aiStreamAccept();
+
+    expect(provisional).toEqual([true, true, false]);
   });
 
   it('refuses to start a second generation while one is running', () => {

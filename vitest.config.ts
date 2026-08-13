@@ -1,11 +1,22 @@
 import { fileURLToPath, URL } from 'node:url';
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vitest/config';
 import vue from '@vitejs/plugin-vue';
 
+const corePackageJson = JSON.parse(
+  readFileSync(new URL('./packages/core/package.json', import.meta.url), 'utf8')
+) as { version: string };
+
 export default defineConfig({
+  define: {
+    __ULTRA_EDITOR_VERSION__: JSON.stringify(corePackageJson.version)
+  },
   plugins: [vue()],
   resolve: {
     alias: {
+      '@ultra-editor/core/lean': fileURLToPath(
+        new URL('./packages/core/src/lean.ts', import.meta.url)
+      ),
       '@ultra-editor/core': fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)),
       '@ultra-editor/vue': fileURLToPath(new URL('./packages/vue/src/index.ts', import.meta.url))
     }

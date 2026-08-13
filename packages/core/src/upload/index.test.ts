@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_MAX_IMAGE_SIZE,
+  DEFAULT_UPLOAD_CONCURRENCY,
   dataUrlUpload,
   defaultImageFetcher,
   formatSize,
@@ -19,6 +20,7 @@ describe('resolveUploadOptions', () => {
     expect(resolved.upload).toBe(dataUrlUpload);
     expect(resolved.fetchImage).toBe(defaultImageFetcher);
     expect(resolved.maxSize).toBe(DEFAULT_MAX_IMAGE_SIZE);
+    expect(resolved.concurrency).toBe(DEFAULT_UPLOAD_CONCURRENCY);
     expect(DEFAULT_MAX_IMAGE_SIZE).toBe(5 * 1024 * 1024);
     expect(resolved.accept).toEqual(['image/']);
   });
@@ -30,10 +32,25 @@ describe('resolveUploadOptions', () => {
       upload,
       fetchImage,
       maxSize: 128,
+      concurrency: 5.8,
       accept: ['image/png', 'video/']
     });
 
-    expect(resolved).toEqual({ upload, fetchImage, maxSize: 128, accept: ['image/png', 'video/'] });
+    expect(resolved).toEqual({
+      upload,
+      fetchImage,
+      maxSize: 128,
+      concurrency: 5,
+      accept: ['image/png', 'video/']
+    });
+  });
+
+  it('reads dynamic concurrency and clamps it to a positive integer', () => {
+    expect(resolveUploadOptions({ concurrency: () => 2.9 }).concurrency).toBe(2);
+    expect(resolveUploadOptions({ concurrency: 0 }).concurrency).toBe(1);
+    expect(resolveUploadOptions({ concurrency: Number.NaN }).concurrency).toBe(
+      DEFAULT_UPLOAD_CONCURRENCY
+    );
   });
 });
 

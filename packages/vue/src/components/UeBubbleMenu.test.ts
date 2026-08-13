@@ -212,6 +212,10 @@ describe('AI menu', () => {
     press(aiButton());
     await nextTick();
 
+    expect(aiButton()?.getAttribute('aria-haspopup')).toBe('menu');
+    expect(aiButton()?.getAttribute('aria-expanded')).toBe('true');
+    expect(document.body.querySelector('.ue-bubble .ue-menu')?.getAttribute('role')).toBe('menu');
+    expect(menuItems().every((item) => item.getAttribute('role') === 'menuitem')).toBe(true);
     expect(menuItems().map((item) => item.textContent?.trim())).toEqual(['润色', '翻译']);
   });
 
@@ -244,6 +248,7 @@ describe('AI menu', () => {
     press(aiButton());
     await nextTick();
     expect(menuItems()).toHaveLength(0);
+    expect(aiButton()?.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('keeps the bubble alive while its own menu holds the focus', async () => {

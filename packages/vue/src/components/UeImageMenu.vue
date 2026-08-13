@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import UeMenu from './UeMenu.vue';
 import UeIcon from './UeIcon.vue';
-import type { ImageAlign, Translator } from '@ultra-editor/core';
+import type { ImageAlign, Translator } from '@ultra-editor/core/lean';
 
 defineProps<{
   visible: boolean;
@@ -39,14 +39,13 @@ function pick(action: () => void) {
 </script>
 
 <template>
-  <UeMenu
-    :visible="visible"
-    :x="x"
-    :y="y"
-    :label="t('toolbar.image')"
-    @close="emit('close')"
-  >
-    <button type="button" class="ue-menu__item" role="menuitem" @click="pick(() => emit('rotate', 90))">
+  <UeMenu :visible="visible" :x="x" :y="y" :label="t('toolbar.image')" @close="emit('close')">
+    <button
+      type="button"
+      class="ue-menu__item"
+      role="menuitem"
+      @click="pick(() => emit('rotate', 90))"
+    >
       <UeIcon name="rotateCw" />
       <span class="ue-menu__label">{{ t('image.rotateCw') }}</span>
     </button>
@@ -83,7 +82,12 @@ function pick(action: () => void) {
 
     <div class="ue-menu__divider" role="separator" />
 
-    <button type="button" class="ue-menu__item" role="menuitem" @click="pick(() => emit('caption'))">
+    <button
+      type="button"
+      class="ue-menu__item"
+      role="menuitem"
+      @click="pick(() => emit('caption'))"
+    >
       <UeIcon name="caption" />
       <span class="ue-menu__label">
         {{ hasCaption ? t('image.editCaption') : t('image.addCaption') }}

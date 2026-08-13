@@ -74,10 +74,17 @@ describe('UeDialog', () => {
   });
 
   it('closes on the header close button', async () => {
-    await openDialog({ title: '甲' });
+    await openDialog({ title: '甲', closeLabel: '关闭' });
+    expect(closeButton()?.getAttribute('aria-label')).toBe('关闭');
+    expect(closeButton()?.title).toBe('关闭');
     closeButton()?.click();
 
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([false]);
+  });
+
+  it('gives the close icon a default accessible name', async () => {
+    await openDialog();
+    expect(closeButton()?.getAttribute('aria-label')).toBe('Close');
   });
 
   it('closes on a backdrop mousedown but ignores one that started inside the panel', async () => {
