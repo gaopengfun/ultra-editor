@@ -12,6 +12,7 @@ import { Column, ColumnBlock } from './extensions/columns';
 import { ColorTableCell, ColorTableHeader } from './extensions/table-cells';
 import { ResizableTableRow } from './extensions/table-row';
 import { ImageUpload, type UploadError } from './extensions/image-upload';
+import { MarkdownPaste } from './extensions/markdown-paste';
 import { AIStream } from './extensions/ai-stream';
 import { GhostText } from './extensions/ghost-text';
 import {
@@ -60,6 +61,11 @@ export interface UltraKitOptions {
   onUploadError?: (error: UploadError) => void;
   /** Pre-configured syntax highlighter. The full entry defaults to lowlight's common set. */
   lowlight?: LowlightInstance;
+  /**
+   * Convert pasted Markdown into rich content. On by default; accepts a getter so
+   * a host can flip it without rebuilding the editor.
+   */
+  markdownPaste?: Toggle;
   ai?: UltraKitAIOptions;
   /** Turn feature groups off wholesale. All groups default to enabled. */
   features?: {
@@ -68,6 +74,7 @@ export interface UltraKitOptions {
     table?: boolean;
     codeBlock?: boolean;
     color?: boolean;
+    markdown?: boolean;
   };
 }
 
@@ -85,6 +92,7 @@ export function createUltraKitWithLowlight(
     table: true,
     codeBlock: true,
     color: true,
+    markdown: true,
     ...options.features
   };
 
@@ -154,6 +162,10 @@ export function createUltraKitWithLowlight(
         translator: options.translator
       })
     );
+  }
+
+  if (features.markdown) {
+    extensions.push(MarkdownPaste.configure({ enabled: options.markdownPaste ?? true }));
   }
 
   extensions.push(AIStream);

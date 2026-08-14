@@ -214,6 +214,7 @@ describe('feature matrix', () => {
       'textStyle',
       'color',
       'codeBlock',
+      'markdownPaste',
       'aiStream'
     ]);
   });
@@ -276,9 +277,25 @@ describe('feature matrix', () => {
     plain.destroy();
   });
 
+  it('drops only the markdown paste handler when markdown is off', () => {
+    const registered = names({ features: { markdown: false } });
+
+    expect(registered).not.toContain('markdownPaste');
+    expect(registered).toEqual(
+      expect.arrayContaining(['image', 'columnBlock', 'table', 'color', 'codeBlock'])
+    );
+  });
+
   it('keeps the AI stream extension even with every feature group off', () => {
     const registered = names({
-      features: { image: false, columns: false, table: false, color: false, codeBlock: false }
+      features: {
+        image: false,
+        columns: false,
+        table: false,
+        color: false,
+        codeBlock: false,
+        markdown: false
+      }
     });
 
     expect(registered).toEqual(['starterKit', 'placeholder', 'aiStream']);

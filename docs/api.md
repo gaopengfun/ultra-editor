@@ -99,8 +99,9 @@ const editor = new Editor({
 | `upload`                              | `{ upload?, fetchImage?, maxSize?, accept? }`           |
 | `onUploadError`                       | 上传失败回调                                            |
 | `lowlight`                            | 自定义 lowlight 实例，用于选择代码高亮语言              |
+| `markdownPaste`                       | 粘贴 Markdown 自动转换，默认开；可传 getter 运行时切换  |
 | `ai`                                  | `{ provider, slash, ghostText }`                        |
-| `features`                            | `{ image, columns, table, codeBlock, color }`，默认全开 |
+| `features`                            | `{ image, columns, table, codeBlock, color, markdown }`，默认全开 |
 
 core 默认入口同步包含 lowlight 的 common 语言集（37 种主流语言）；lean 子路径不注册任何语言，由调用方自己决定：
 
@@ -167,6 +168,8 @@ looksLikeMarkdown(text); // 这段纯文本值不值得当 Markdown 解析
 - **Markdown 表达不了的会降级而不是丢失**：下划线和文字颜色留下文字，分栏按顺序摊平成若干块。
 - **源码里的裸 HTML 一律转义**，`javascript:` 链接和非图片 `data:` URL 直接拒绝 —— 从剪贴板来的 Markdown 是不可信输入。
 - **粘贴自动识别是保守的**：一个块级语法（`# `、`- `、`> `、围栏、表格分隔行……）即可判定；只有行内语法时要出现两种以上才算。把别人的普通段落重排，比让一行 `# text` 原样落地更糟。剪贴板里带 `text/html` 时不接管，代码块内也不接管。
+
+自己组装扩展时，`MarkdownPaste` 需要显式加入（`createUltraKit` 默认已含，`features.markdown: false` 可摘掉）。
 
 ### 命令
 

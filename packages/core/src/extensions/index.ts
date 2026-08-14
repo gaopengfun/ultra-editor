@@ -28,6 +28,7 @@ export {
   type AIStreamRange
 } from './ai-stream';
 export { ULTRA_EDITOR_OPTIONS_META } from './runtime-options';
+export { MarkdownPaste, markdownPasteKey, type MarkdownPasteOptions } from './markdown-paste';
 export { GhostText, ghostSuggestion, type GhostTextOptions } from './ghost-text';
 export {
   SlashCommand,
