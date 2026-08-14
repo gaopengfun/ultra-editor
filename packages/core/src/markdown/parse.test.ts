@@ -145,14 +145,40 @@ describe('block markdown', () => {
     );
   });
 
-  it('keeps an ordered marker that does not start at 1 inside the quote', () => {
-    // CommonMark only lets a list interrupt a paragraph when it starts at 1, so
-    // `2.` does not end the quote the way `1.` does — a sentence wrapping onto
-    // "2. " is not torn out of it. It still opens a list once the quote's own body
-    // is parsed: paragraph interruption *within* a block is a separate rule this
-    // parser does not implement.
-    expect(markdownToHTML('> a\n2. b')).toBe(
-      '<blockquote><p>a</p><ol><li>b</li></ol></blockquote>'
+  it('lets a list interrupt a paragraph only when it legally can', () => {
+    expect(markdownToHTML('正文\n- b')).toBe('<p>正文</p><ul><li>b</li></ul>');
+    expect(markdownToHTML('正文\n1. b')).toBe('<p>正文</p><ol><li>b</li></ol>');
+    expect(markdownToHTML('> a\n2. b')).toBe('<blockquote><p>a\n2. b</p></blockquote>');
+  });
+
+  it('keeps a numbered line that cannot interrupt as part of the sentence', () => {
+    // CommonMark only lets an ordered list interrupt a paragraph when it starts at
+    // 1. Without that rule a wrapped line beginning with a number loses the number
+    // outright — it is eaten as the list marker — and ordinary prose arriving from
+    // the clipboard gets silently restructured. Every nesting depth has to honour
+    // it, since each is reached by its own code path.
+    expect(markdownToHTML('我家窗户是\n14. 门是 6')).toBe('<p>我家窗户是\n14. 门是 6</p>');
+    expect(markdownToHTML('> 我家窗户是\n14. 门是 6')).toBe(
+      '<blockquote><p>我家窗户是\n14. 门是 6</p></blockquote>'
+    );
+    expect(markdownToHTML('- 我家窗户是\n  14. 门是 6')).toBe(
+      '<ul><li>我家窗户是\n14. 门是 6</li></ul>'
+    );
+    expect(markdownToHTML('- a\n  - 我家窗户是\n    14. 门是 6')).toBe(
+      '<ul><li>a<ul><li>我家窗户是\n14. 门是 6</li></ul></li></ul>'
+    );
+  });
+
+  it('still opens a list when the numbering starts a block of its own', () => {
+    // Copying items 5-8 out of a longer list is a list, not a sentence.
+    expect(markdownToHTML('5. 五\n6. 六')).toBe('<ol><li>五</li><li>六</li></ol>');
+  });
+
+  it('keeps a nested ordered run whose later markers are not 1', () => {
+    // `2.` sits at the same depth as `1.`, so it is the next item rather than a
+    // marker trying to interrupt the paragraph above it.
+    expect(markdownToHTML('- 步骤\n  1. 先做\n  2. 再做')).toBe(
+      '<ul><li>步骤<ol><li>先做</li><li>再做</li></ol></li></ul>'
     );
   });
 

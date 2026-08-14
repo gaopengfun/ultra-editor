@@ -142,7 +142,11 @@ const isBlank = (line: string) => !line.trim();
  * quote there would swap one wrong reading for another rather than fix anything.
  */
 function endsLazyQuote(line: string): boolean {
-  if (isBlank(line) || HEADING.test(line) || BULLET.test(line) || FENCE.test(line)) return true;
+  return isBlank(line) || HEADING.test(line) || FENCE.test(line) || canInterruptParagraph(line);
+}
+
+function canInterruptParagraph(line: string): boolean {
+  if (BULLET.test(line)) return true;
   const ordered = ORDERED.exec(line);
   return ordered !== null && ordered[2] === '1';
 }
@@ -304,7 +308,10 @@ function blocksToHTML(lines: string[], tight = false): string {
       continue;
     }
 
-    if (BULLET.test(line) || ORDERED.test(line)) {
+    if (
+      (BULLET.test(line) || ORDERED.test(line)) &&
+      (!buffer.length || canInterruptParagraph(line))
+    ) {
       flush();
       const items: ListItem[] = [];
       while (index < lines.length) {
@@ -312,9 +319,18 @@ function blocksToHTML(lines: string[], tight = false): string {
         const ordered = bullet ? null : ORDERED.exec(lines[index]);
         const match = bullet ?? ordered;
         if (match) {
-          items.push({ level: indentOf(match[1]), ordered: !bullet, lines: [match[3]] });
-          index += 1;
-          continue;
+          const level = indentOf(match[1]);
+          const previous = items[items.length - 1];
+          // A marker indented past the item above it opens a nested list, and may
+          // only do so when it could interrupt the paragraph that item is in the
+          // middle of. An ordered marker that does not start at 1 cannot, so it
+          // stays part of the sentence instead of eating its own number.
+          const opensNested = previous !== undefined && level > previous.level;
+          if (!opensNested || canInterruptParagraph(lines[index])) {
+            items.push({ level, ordered: !bullet, lines: [match[3]] });
+            index += 1;
+            continue;
+          }
         }
         // An indented line under an item is a continuation of it.
         if (!isBlank(lines[index]) && /^\s{2,}/.test(lines[index])) {
