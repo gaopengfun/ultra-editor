@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
 import { createLowlight, common } from 'lowlight';
 import { createUltraKit, type UltraKitOptions } from '../kit';
-import { UltraCodeBlock } from './code-block';
+import { createLeanUltraKit } from '../lean';
+import { UltraCodeBlock, loadCommonLanguages, refreshCodeHighlighting } from './code-block';
 
 let editor: Editor;
 let writeText: ReturnType<typeof vi.fn>;
@@ -326,6 +327,106 @@ describe('code block language picker', () => {
 
     expect(() => rust.click()).not.toThrow();
     expect(editor.getHTML()).toBe('<p>没有代码块</p>');
+  });
+});
+
+describe('code block language catalogue', () => {
+  /** An editor whose language set can grow after it was built. */
+  function makeLeanEditor(content: string, lowlight: ReturnType<typeof createLowlight>) {
+    const element = document.createElement('div');
+    document.body.appendChild(element);
+    return new Editor({ element, content, extensions: createLeanUltraKit({ lowlight }) });
+  }
+
+  it('builds no menu until someone opens one', () => {
+    // Thirty-eight buttons per block, eagerly, is thirty-eight buttons per block
+    // nobody looked at — a long document paid for every one of them.
+    expect(document.querySelector('.ue-codeblock__langs')).toBeNull();
+    expect(options()).toHaveLength(0);
+
+    trigger().click();
+
+    expect(options().length).toBeGreaterThan(30);
+  });
+
+  it('picks up languages registered after the block was drawn', () => {
+    const lowlight = createLowlight();
+    editor.destroy();
+    editor = makeLeanEditor('<pre><code>x</code></pre>', lowlight);
+
+    // This is the state the Vue component mounts in: the grammars are still in
+    // flight, so the picker has nothing but plain text to offer.
+    trigger().click();
+    expect(options().map((item) => item.textContent)).toEqual(['纯文本']);
+    trigger().click();
+
+    lowlight.register('rust', common.rust);
+    trigger().click();
+
+    expect(option('Rust')).toBeDefined();
+  });
+
+  it('rebuilds an open menu when the grammars land under it', () => {
+    const lowlight = createLowlight();
+    editor.destroy();
+    editor = makeLeanEditor('<pre><code>x</code></pre>', lowlight);
+    trigger().click();
+    expect(options()).toHaveLength(1);
+
+    lowlight.register('rust', common.rust);
+    refreshCodeHighlighting(editor);
+
+    // The menu the user is looking at has to grow under them, not wait for a
+    // close and a reopen.
+    expect(option('Rust')).toBeDefined();
+    expect(menu()).not.toBeNull();
+  });
+
+  it('registers the common set on demand', async () => {
+    const lowlight = createLowlight();
+
+    await loadCommonLanguages(lowlight);
+
+    expect(lowlight.listLanguages()).toEqual(createLowlight(common).listLanguages());
+  });
+});
+
+describe('refreshCodeHighlighting', () => {
+  it('repaints blocks that were drawn before their grammar existed', () => {
+    const lowlight = createLowlight();
+    editor.destroy();
+    const element = document.createElement('div');
+    document.body.appendChild(element);
+    editor = new Editor({
+      element,
+      content: '<pre><code class="language-python">x = 1</code></pre>',
+      extensions: createLeanUltraKit({ lowlight })
+    });
+    expect(editor.view.dom.querySelector('.hljs-number')).toBeNull();
+
+    lowlight.register('python', common.python);
+    expect(refreshCodeHighlighting(editor)).toBe(true);
+
+    expect(editor.view.dom.querySelector('.hljs-number')).not.toBeNull();
+  });
+
+  it('leaves the document and the undo stack alone', () => {
+    const before = editor.getHTML();
+
+    refreshCodeHighlighting(editor);
+
+    expect(editor.getHTML()).toBe(before);
+    // The repaint is bookkeeping, not an edit: undo must not have it to give back.
+    expect(editor.can().undo()).toBe(false);
+  });
+
+  it('dispatches nothing for a document without code blocks', () => {
+    editor.commands.setContent('<p>没有代码块</p>');
+    const spy = vi.spyOn(editor.view, 'dispatch');
+
+    expect(refreshCodeHighlighting(editor)).toBe(false);
+
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 

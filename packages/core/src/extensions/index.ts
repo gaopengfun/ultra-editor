@@ -5,7 +5,12 @@ export {
   type ImageResizeConfig
 } from './image-figure';
 export { Column, ColumnBlock, MIN_COLUMNS, MAX_COLUMNS, type ColumnBlockOptions } from './columns';
-export { UltraCodeBlock, type UltraCodeBlockOptions } from './code-block';
+export {
+  UltraCodeBlock,
+  loadCommonLanguages,
+  refreshCodeHighlighting,
+  type UltraCodeBlockOptions
+} from './code-block';
 export { ColorTableCell, ColorTableHeader } from './table-cells';
 export { ResizableTableRow } from './table-row';
 export {

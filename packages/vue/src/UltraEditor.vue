@@ -1,14 +1,26 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue';
+import {
+  computed,
+  defineAsyncComponent,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  toRef,
+  watch
+} from 'vue';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import type { EditorView } from '@tiptap/pm/view';
 import { CellSelection } from '@tiptap/pm/tables';
 import {
+  createLowlight,
   createTranslator,
   createLeanUltraKit,
   DEFAULT_SLASH_ITEMS,
   isAIStreamTransaction,
   isSafeLinkUrl,
+  loadCommonLanguages,
+  refreshCodeHighlighting,
   resolveUploadOptions,
   rotateImage,
   ULTRA_EDITOR_OPTIONS_META,
@@ -71,6 +83,23 @@ const upload = computed(() =>
 
 const provider = computed(() => props.ai?.provider ?? null);
 const hasAI = computed(() => !!provider.value);
+
+/* Syntax highlighting -------------------------------------------------------- */
+
+// A host that passes `lowlight` owns the language set outright — we neither add
+// to it nor fetch anything. Without one the editor starts with an empty registry
+// and pulls lowlight's common grammars in as their own chunk once it is mounted,
+// so an app that never shows a code block never downloads 37 syntax parsers,
+// while one that does gets a real language picker instead of a lone "plain text".
+const lowlight = props.lowlight ?? createLowlight();
+
+onMounted(async () => {
+  if (props.lowlight) return;
+  await loadCommonLanguages(lowlight);
+  const instance = editor.value;
+  // The import can outlive the component; a torn-down editor has nothing to paint.
+  if (instance && !instance.isDestroyed) refreshCodeHighlighting(instance);
+});
 
 /* Slash menu ---------------------------------------------------------------- */
 
@@ -160,7 +189,7 @@ const editor = useEditor({
     locale: props.locale,
     messages: props.messages,
     translator: () => t.value,
-    lowlight: props.lowlight,
+    lowlight,
     upload: {
       // Delegated through the computed so a handler swapped in after mount is honoured.
       upload: (file, filename) => upload.value.upload(file, filename),
@@ -223,6 +252,10 @@ const editor = useEditor({
     }
   },
   onUpdate: ({ transaction }) => {
+    // A runtime-options refresh — a locale change, or grammars arriving and
+    // forcing a repaint — rewrites no content. Emitting there would hand the host
+    // a `change` for a document nobody touched, and mark a pristine draft dirty.
+    if (transaction.getMeta(ULTRA_EDITOR_OPTIONS_META)) return;
     if (transaction.docChanged && !isAIStreamTransaction(transaction)) scheduleEmit();
   }
 });

@@ -17,7 +17,7 @@
 | `maxImageSize`            | `number`             | `5 * 1024 * 1024`     | 超过则拒绝，单位字节                                 |
 | `uploadConcurrency`       | `number`             | `3`                   | 同时上传的图片数量，至少为 1                         |
 | `imageProcessingLimits`   | `ImageProcessingLimits` | 见下方默认值       | 旋转 / 裁切时的源图与 Canvas 资源上限                |
-| `lowlight`                | `LowlightInstance`    | 无预注册语言          | 按需注入代码高亮语言                                 |
+| `lowlight`                | `LowlightInstance`    | 挂载后异步加载 common | 自定义代码高亮语言集，传了就完全以它为准             |
 | `ai`                      | `UltraEditorAIProps` | —                     | AI 配置，不传则无任何 AI 界面                        |
 | `toolbar`                 | `boolean`            | `true`                | 是否显示工具栏                                       |
 | `statusbar`               | `boolean`            | `true`                | 是否显示字数统计栏                                   |
@@ -102,7 +102,7 @@ const editor = new Editor({
 | `ai`                                  | `{ provider, slash, ghostText }`                        |
 | `features`                            | `{ image, columns, table, codeBlock, color }`，默认全开 |
 
-core 默认入口包含 lowlight 的 common 语言集；lean 子路径和 Vue 组件默认不注册语言，避免把未使用的语法解析器带进应用包：
+core 默认入口同步包含 lowlight 的 common 语言集（37 种主流语言）；lean 子路径不注册任何语言，由调用方自己决定：
 
 ```ts
 import { createLowlight, createUltraKit } from '@ultra-editor/core/lean';
@@ -112,7 +112,18 @@ const lowlight = createLowlight();
 const extensions = createUltraKit({ lowlight });
 ```
 
-Vue 组件需要高亮时，从 `@ultra-editor/vue` 导入 `createLowlight`，注册实际使用的语言后传入同名 prop：`<UltraEditor :lowlight="lowlight" />`。
+Vue 组件走的是 lean 入口，但不传 `lowlight` 时会在挂载后把 common 语言集**作为独立 chunk 异步拉进来**：主包里没有这 ~43 KB（gzip）语法解析器，代码块的语言下拉和高亮又都是开箱可用的。想自己掌控语言集就传 `lowlight`，此时组件不会再加载任何东西：
+
+```ts
+import { createLowlight } from '@ultra-editor/vue';
+import typescript from 'highlight.js/lib/languages/typescript';
+
+const lowlight = createLowlight();
+lowlight.register('typescript', typescript);
+// <UltraEditor :lowlight="lowlight" />
+```
+
+自己组装扩展时，这两步对应 core 导出的 `loadCommonLanguages(lowlight)` 与 `refreshCodeHighlighting(editor)` —— 后者用来重绘语法到位之前就已经画出来的代码块（lowlight 插件只在文档变化时才重算高亮）。
 
 ### 扩展
 

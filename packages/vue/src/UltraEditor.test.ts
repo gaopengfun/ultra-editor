@@ -160,6 +160,21 @@ function posOf(type: string) {
   return found;
 }
 
+/** Languages the mounted editor's code block currently offers. */
+function languagesOf(): string[] {
+  const codeBlock = editor.extensionManager.extensions.find(
+    (extension) => extension.name === 'codeBlock'
+  )!;
+  return (codeBlock.options.lowlight as { listLanguages: () => string[] }).listLanguages();
+}
+
+/**
+ * The default grammars arrive through a real `import()`, which settles over
+ * several ticks rather than one — `flushPromises` is not enough to see it land.
+ */
+const whenLanguagesLoaded = () =>
+  vi.waitFor(() => expect(languagesOf().length).toBeGreaterThan(30));
+
 function cellPositions() {
   const cells: number[] = [];
   editor.state.doc.descendants((node, pos) => {
@@ -192,21 +207,33 @@ describe('chrome', () => {
     expect(editor.getHTML()).toBe('<p>正文</p>');
   });
 
-  it('keeps syntax languages opt-in and accepts a host lowlight instance', async () => {
+  it('fetches the common languages after mount instead of bundling them', async () => {
     await mountEditor();
-    const defaultCodeBlock = editor.extensionManager.extensions.find(
-      (extension) => extension.name === 'codeBlock'
-    );
-    expect(defaultCodeBlock?.options.lowlight.listLanguages()).toEqual([]);
 
+    // Nothing is registered while the editor is being built — the grammars are a
+    // chunk of their own, so an app that never shows a code block never gets them.
+    expect(languagesOf().length).toBe(0);
+
+    await whenLanguagesLoaded();
+
+    // Once they land the picker has a real catalogue rather than a lone entry.
+    const languages = languagesOf();
+    expect(languages).toContain('typescript');
+    expect(languages).toContain('python');
+    expect(languages).toContain('json');
+  });
+
+  it('leaves a host-supplied lowlight instance exactly as it was given', async () => {
     const lowlight = createLowlight();
     lowlight.register('custom', (() => ({ name: 'custom', contains: [] })) as never);
-    wrapper.unmount();
     await mountEditor({ lowlight });
-    const customCodeBlock = editor.extensionManager.extensions.find(
-      (extension) => extension.name === 'codeBlock'
-    );
-    expect(customCodeBlock?.options.lowlight.listLanguages()).toEqual(['custom']);
+
+    await flushPromises();
+    await flushPromises();
+
+    // A host that brings its own instance owns the language set: no fetch, and
+    // nothing added behind its back.
+    expect(languagesOf()).toEqual(['custom']);
   });
 
   it('drops the toolbar when the host turns it off', async () => {
@@ -287,6 +314,23 @@ describe('two-way binding', () => {
 
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['<p>新增正文</p>']);
     expect(wrapper.emitted('change')?.at(-1)).toEqual(['<p>新增正文</p>']);
+  });
+
+  it('stays quiet when the arriving grammars repaint the code blocks', async () => {
+    const html = '<pre><code class="language-python">x = 1</code></pre>';
+    await mountEditor({ modelValue: html });
+
+    // The repaint is the point: wait for the block to actually be highlighted.
+    await vi.waitFor(() =>
+      expect(wrapper.get('.ue-content').find('.hljs-number').exists()).toBe(true)
+    );
+
+    // Registering the languages forces a pass through the document, which the
+    // host must not see as an edit — a pristine draft would come up dirty, and
+    // the trailing-node plugin must not slip a paragraph in behind its back.
+    expect(wrapper.emitted('change')).toBeUndefined();
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined();
+    expect(editor.getHTML()).toBe(html);
   });
 
   it('takes content pushed in through the model', async () => {
