@@ -20,6 +20,7 @@ export * from './kit';
 export * from './upload';
 export * from './i18n';
 export * from './ai';
+export * from './markdown';
 export { contrastText } from './utils/color';
 export { isSafeImageUrl, isSafeLinkUrl } from './utils/url';
 export { isBrowser } from './utils/env';

@@ -154,6 +154,20 @@ rotateImage(src, 90 | -90, fetchImage?, limits?): Promise<Blob>
 
 默认拒绝超过 8000 万像素的解码源图，并把导出结果等比限制在 1600 万像素、单边 8192 像素以内。可通过 `ImageProcessingLimits` 调整。
 
+### Markdown
+
+```ts
+docToMarkdown(editor.state.doc); // 文档 → Markdown
+markdownToHTML(md); // Markdown → HTML，可直接喂 setContent
+looksLikeMarkdown(text); // 这段纯文本值不值得当 Markdown 解析
+```
+
+方言是 CommonMark 的常用部分 + GFM 表格与删除线，也就是本编辑器 schema 装得下的子集：标题、段落、加粗 / 斜体 / 删除线 / 行内代码 / 链接、有序无序列表（含嵌套）、引用、围栏代码块（带语言）、分割线、图片、表格、硬换行。
+
+- **Markdown 表达不了的会降级而不是丢失**：下划线和文字颜色留下文字，分栏按顺序摊平成若干块。
+- **源码里的裸 HTML 一律转义**，`javascript:` 链接和非图片 `data:` URL 直接拒绝 —— 从剪贴板来的 Markdown 是不可信输入。
+- **粘贴自动识别是保守的**：一个块级语法（`# `、`- `、`> `、围栏、表格分隔行……）即可判定；只有行内语法时要出现两种以上才算。把别人的普通段落重排，比让一行 `# text` 原样落地更糟。剪贴板里带 `text/html` 时不接管，代码块内也不接管。
+
 ### 命令
 
 除了 Tiptap 自带的命令，本 SDK 额外注册：
