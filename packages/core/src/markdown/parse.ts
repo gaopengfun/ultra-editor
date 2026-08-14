@@ -130,6 +130,23 @@ const TABLE_DIVIDER = /^\s*\|?(\s*:?-+:?\s*\|)+\s*:?-*:?\s*\|?\s*$/;
 
 const isBlank = (line: string) => !line.trim();
 
+/**
+ * Does this line open a block of its own, ending the lazy continuation of the
+ * quote above it?
+ *
+ * An ordered list only counts when it starts at 1, per CommonMark — otherwise a
+ * sentence that happens to wrap onto `2. ` would be cut in half.
+ *
+ * Thematic breaks are deliberately absent. `---` directly under a line of text is
+ * a setext heading underline, which this parser does not implement; breaking the
+ * quote there would swap one wrong reading for another rather than fix anything.
+ */
+function endsLazyQuote(line: string): boolean {
+  if (isBlank(line) || HEADING.test(line) || BULLET.test(line) || FENCE.test(line)) return true;
+  const ordered = ORDERED.exec(line);
+  return ordered !== null && ordered[2] === '1';
+}
+
 /** Split a pipe-table row, honouring `\|` inside a cell. */
 function tableCells(line: string): string[] {
   const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '');
@@ -257,7 +274,7 @@ function blocksToHTML(lines: string[], tight = false): string {
         }
         // A plain line under a quote is a lazy continuation of it; a blank line or
         // a block of its own ends the quote.
-        if (isBlank(lines[index]) || BULLET.test(lines[index]) || HEADING.test(lines[index])) break;
+        if (endsLazyQuote(lines[index])) break;
         body.push(lines[index]);
         index += 1;
       }
@@ -307,7 +324,15 @@ function blocksToHTML(lines: string[], tight = false): string {
         }
         break;
       }
-      html.push(renderList(items, 0).html);
+      // `renderList` renders one homogeneous run and reports where it stopped —
+      // it gives up at the first item whose level or marker type differs. Draining
+      // the rest is what keeps a bullet list followed straight by an ordered one,
+      // with no blank line between them, from losing every item after the switch.
+      for (let cursor = 0; cursor < items.length; ) {
+        const run = renderList(items, cursor);
+        html.push(run.html);
+        cursor = run.next;
+      }
       continue;
     }
 

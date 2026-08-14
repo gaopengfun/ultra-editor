@@ -131,6 +131,29 @@ describe('block markdown', () => {
   it('converts blockquotes, including lazy continuation lines', () => {
     expect(markdownToHTML('> a\n> b')).toBe('<blockquote><p>a\nb</p></blockquote>');
     expect(markdownToHTML('> a\nb')).toBe('<blockquote><p>a\nb</p></blockquote>');
+    expect(markdownToHTML('> a\n\nb')).toBe('<blockquote><p>a</p></blockquote><p>b</p>');
+  });
+
+  it('ends a quote at a line that opens a block of its own', () => {
+    expect(markdownToHTML('> a\n# H')).toBe('<blockquote><p>a</p></blockquote><h1>H</h1>');
+    expect(markdownToHTML('> a\n- b')).toBe('<blockquote><p>a</p></blockquote><ul><li>b</li></ul>');
+    expect(markdownToHTML('> a\n1. b')).toBe(
+      '<blockquote><p>a</p></blockquote><ol><li>b</li></ol>'
+    );
+    expect(markdownToHTML('> a\n```\nc\n```')).toBe(
+      '<blockquote><p>a</p></blockquote><pre><code>c</code></pre>'
+    );
+  });
+
+  it('keeps an ordered marker that does not start at 1 inside the quote', () => {
+    // CommonMark only lets a list interrupt a paragraph when it starts at 1, so
+    // `2.` does not end the quote the way `1.` does — a sentence wrapping onto
+    // "2. " is not torn out of it. It still opens a list once the quote's own body
+    // is parsed: paragraph interruption *within* a block is a separate rule this
+    // parser does not implement.
+    expect(markdownToHTML('> a\n2. b')).toBe(
+      '<blockquote><p>a</p><ol><li>b</li></ol></blockquote>'
+    );
   });
 
   it('converts thematic breaks', () => {
@@ -159,6 +182,22 @@ describe('block markdown', () => {
 
   it('switches list type when the marker changes', () => {
     expect(markdownToHTML('- a\n\n1. b')).toBe('<ul><li>a</li></ul><ol><li>b</li></ol>');
+  });
+
+  it('keeps every item when the marker changes with no blank line between', () => {
+    // Hand-written and model-written Markdown runs the two lists together. Each
+    // run is its own list, and none of them may go missing.
+    expect(markdownToHTML('- a\n1. b')).toBe('<ul><li>a</li></ul><ol><li>b</li></ol>');
+    expect(markdownToHTML('1. one\n- two')).toBe('<ol><li>one</li></ol><ul><li>two</li></ul>');
+    expect(markdownToHTML('- a\n1. b\n- c')).toBe(
+      '<ul><li>a</li></ul><ol><li>b</li></ol><ul><li>c</li></ul>'
+    );
+  });
+
+  it('keeps an item that dedents below the level the run started at', () => {
+    expect(markdownToHTML('  - deep\n- shallow')).toBe(
+      '<ul><li>deep</li></ul><ul><li>shallow</li></ul>'
+    );
   });
 
   it('converts a GFM table', () => {
