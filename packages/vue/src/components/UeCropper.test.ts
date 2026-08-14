@@ -339,6 +339,39 @@ describe('the crop box', () => {
     expect(geometry()).toEqual({ left: '50px', top: '25px', width: '300px', height: '225px' });
   });
 
+  // The box is laid out inside the element the preview rotates, so its left/top are
+  // in the image's axes while the pointer moves in screen axes. Each case parks the
+  // box at 200,150 (of a 400x300 crop in an 800x600 image), applies the preview
+  // transform, then drags 50,25 on screen — i.e. 100,50 in image pixels.
+  const NUDGED: Array<{ name: string; apply: string[]; expected: { left: string; top: string } }> =
+    [
+      { name: '顺时针旋转', apply: ['顺时针旋转 90°'], expected: { left: '125px', top: '25px' } },
+      {
+        name: '旋转半圈',
+        apply: ['顺时针旋转 90°', '顺时针旋转 90°'],
+        expected: { left: '50px', top: '50px' }
+      },
+      { name: '逆时针旋转', apply: ['逆时针旋转 90°'], expected: { left: '75px', top: '125px' } },
+      { name: '水平翻转', apply: ['水平翻转'], expected: { left: '50px', top: '100px' } },
+      { name: '垂直翻转', apply: ['垂直翻转'], expected: { left: '150px', top: '50px' } }
+    ];
+
+  it.each(NUDGED)('keeps the box under the pointer after $name', async ({ apply, expected }) => {
+    await open();
+    await decode();
+    drag(handle('se'), -200, -150);
+    drag(box(), 100, 75);
+    await nextTick();
+    expect(geometry()).toMatchObject({ left: '100px', top: '75px' });
+
+    for (const title of apply) tool(title)?.click();
+    await nextTick();
+
+    drag(box(), 50, 25);
+    await nextTick();
+    expect(geometry()).toMatchObject(expected);
+  });
+
   it('keeps the box inside the image when it is dragged past the edge', async () => {
     await open();
     await decode();

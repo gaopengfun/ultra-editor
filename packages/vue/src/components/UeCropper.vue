@@ -118,6 +118,31 @@ function turn(direction: 1 | -1) {
 // would otherwise strand the document-level mousemove/mouseup listeners.
 let stopDrag: (() => void) | null = null;
 
+/**
+ * Undo the preview's `rotate()` for a pointer delta.
+ *
+ * The crop box lives *inside* the element the preview rotates, so its left/top are
+ * in the image's own axes while the mouse moves in screen axes. Without this a
+ * drag to the right on a quarter-turned image walks the box down the picture.
+ *
+ * A table rather than trigonometry: the angle is always a right angle, so these
+ * are exact where `Math.cos` would hand back 6.1e-17.
+ */
+const UNROTATE: Record<number, (x: number, y: number) => [number, number]> = {
+  0: (x, y) => [x, y],
+  90: (x, y) => [y, -x],
+  180: (x, y) => [-x, -y],
+  270: (x, y) => [-y, x]
+};
+
+/** Screen-space pointer delta → image-space delta, undoing the rotation and flips. */
+function toImageDelta(screenX: number, screenY: number): [number, number] {
+  const [x, y] = UNROTATE[rotate.value](screenX, screenY);
+  // The flips are applied after the rotation in the preview's transform list, so
+  // they undo first — and a sign flip is its own inverse.
+  return [flipH.value ? -x : x, flipV.value ? -y : y];
+}
+
 /** Drag handles: `move` shifts the box, the corners resize it. */
 function startDrag(event: MouseEvent, handle: 'move' | 'nw' | 'ne' | 'sw' | 'se') {
   event.preventDefault();
@@ -128,8 +153,10 @@ function startDrag(event: MouseEvent, handle: 'move' | 'nw' | 'ne' | 'sw' | 'se'
   const MIN = 24;
 
   const onMove = (move: MouseEvent) => {
-    const dx = (move.clientX - start.x) / ratio;
-    const dy = (move.clientY - start.y) / ratio;
+    const [dx, dy] = toImageDelta(
+      (move.clientX - start.x) / ratio,
+      (move.clientY - start.y) / ratio
+    );
     const next = { ...origin };
 
     if (handle === 'move') {
