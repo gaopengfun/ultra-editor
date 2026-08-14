@@ -121,6 +121,87 @@ describe('readSSE', () => {
     expect(out).toEqual([payload, payload]);
   });
 
+  it('closes the body when the consumer stops reading', async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: a\n\ndata: b\n\n'));
+        // Left open: the provider walks away before the server is finished, which
+        // is what both bundled ones do on `[DONE]` / `message_stop`.
+      },
+      cancel() {
+        cancelled = true;
+      }
+    });
+
+    for await (const payload of readSSE({ body } as unknown as Response, freshSignal())) {
+      expect(payload).toBe('a');
+      break;
+    }
+
+    // Releasing the lock is not closing the body — without the cancel, every
+    // completed generation would leave its response (and connection) hanging.
+    expect(cancelled).toBe(true);
+  });
+
+  it('closes the body when an oversized event aborts the read', async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${'x'.repeat(1_000_000)}`));
+      },
+      cancel() {
+        cancelled = true;
+      }
+    });
+
+    await expect(collect(readSSE({ body } as unknown as Response, freshSignal()))).rejects.toThrow(
+      'ai-sse-event-too-large'
+    );
+
+    expect(cancelled).toBe(true);
+  });
+
+  it('swallows a body that refuses to close when the consumer stops', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: a\n\ndata: b\n\n'));
+      },
+      cancel() {
+        throw new Error('cancel-failed');
+      }
+    });
+
+    // A body that cannot be closed is not the caller's problem, and must not
+    // surface as a rejection out of a generator they already walked away from.
+    await expect(
+      (async () => {
+        for await (const payload of readSSE({ body } as unknown as Response, freshSignal())) {
+          expect(payload).toBe('a');
+          break;
+        }
+      })()
+    ).resolves.toBeUndefined();
+  });
+
+  it('leaves a stream that ran dry alone', async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('data: a\n\n'));
+        controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      }
+    });
+
+    expect(await collect(readSSE({ body } as unknown as Response, freshSignal()))).toEqual(['a']);
+
+    // Nothing left to release; cancelling a finished stream would only be noise.
+    expect(cancelled).toBe(false);
+  });
+
   it('cancels immediately when the signal was already aborted', async () => {
     let cancelled = false;
     const body = new ReadableStream<Uint8Array>({

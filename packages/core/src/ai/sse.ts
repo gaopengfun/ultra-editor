@@ -36,10 +36,19 @@ export async function* readSSE(response: Response, signal: AbortSignal): AsyncGe
   const cancel = () => void reader.cancel().catch(() => {});
   signal.addEventListener('abort', cancel, { once: true });
 
+  // Only a stream that ran dry has nothing left to release. Every other exit —
+  // an abort, an oversized event, or a provider returning early on `[DONE]` /
+  // `message_stop`, which is the normal path for both of the bundled ones —
+  // leaves bytes unread, and `releaseLock` alone does not close the body.
+  let drained = false;
+
   try {
     for (;;) {
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) {
+        drained = true;
+        break;
+      }
 
       buffer += decoder.decode(value, { stream: true });
 
@@ -70,6 +79,7 @@ export async function* readSSE(response: Response, signal: AbortSignal): AsyncGe
     }
   } finally {
     signal.removeEventListener('abort', cancel);
+    if (!drained) await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }
