@@ -1,7 +1,7 @@
 import { Extension, type Editor, type Range } from '@tiptap/core';
-import Suggestion, { type SuggestionOptions } from '@tiptap/suggestion';
+import { Suggestion, type SuggestionOptions } from '@tiptap/suggestion';
 import { PluginKey } from '@tiptap/pm/state';
-import type { AITask } from '../ai/types';
+import { resolveToggle, type AITask, type Toggle } from '../ai/types';
 import type { MessageKey } from '../i18n';
 
 export type SlashGroup = 'basic' | 'insert' | 'ai';
@@ -61,8 +61,7 @@ export const DEFAULT_SLASH_ITEMS: SlashItem[] = [
     labelKey: 'toolbar.bulletList',
     keywords: ['ul', 'list', 'bullet', 'liebiao'],
     icon: 'bulletList',
-    run: ({ editor, range }) =>
-      editor.chain().focus().deleteRange(range).toggleBulletList().run()
+    run: ({ editor, range }) => editor.chain().focus().deleteRange(range).toggleBulletList().run()
   },
   {
     key: 'orderedList',
@@ -70,8 +69,7 @@ export const DEFAULT_SLASH_ITEMS: SlashItem[] = [
     labelKey: 'toolbar.orderedList',
     keywords: ['ol', 'list', 'number', 'liebiao'],
     icon: 'orderedList',
-    run: ({ editor, range }) =>
-      editor.chain().focus().deleteRange(range).toggleOrderedList().run()
+    run: ({ editor, range }) => editor.chain().focus().deleteRange(range).toggleOrderedList().run()
   },
   {
     key: 'blockquote',
@@ -79,8 +77,7 @@ export const DEFAULT_SLASH_ITEMS: SlashItem[] = [
     labelKey: 'toolbar.blockquote',
     keywords: ['quote', 'yinyong'],
     icon: 'quote',
-    run: ({ editor, range }) =>
-      editor.chain().focus().deleteRange(range).toggleBlockquote().run()
+    run: ({ editor, range }) => editor.chain().focus().deleteRange(range).toggleBlockquote().run()
   },
   {
     key: 'codeBlock',
@@ -118,8 +115,7 @@ export const DEFAULT_SLASH_ITEMS: SlashItem[] = [
     labelKey: 'toolbar.hr',
     keywords: ['hr', 'divider', 'fengexian'],
     icon: 'hr',
-    run: ({ editor, range }) =>
-      editor.chain().focus().deleteRange(range).setHorizontalRule().run()
+    run: ({ editor, range }) => editor.chain().focus().deleteRange(range).setHorizontalRule().run()
   },
   {
     key: 'ai-continue',
@@ -146,7 +142,9 @@ export const DEFAULT_SLASH_ITEMS: SlashItem[] = [
 ];
 
 export interface SlashCommandOptions {
-  items: SlashItem[];
+  items: SlashItem[] | (() => SlashItem[]);
+  /** Runtime toggle; the plugin stays mounted so it can be enabled later. */
+  enabled: Toggle;
   /** Called when a slash item wants AI; the host opens its prompt/preview UI. */
   onAI: (task: AITask, instruction?: string) => void;
   /** Supplied by the framework adapter — core never renders a menu itself. */
@@ -176,6 +174,7 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
   addOptions() {
     return {
       items: DEFAULT_SLASH_ITEMS,
+      enabled: true,
       onAI: () => {},
       render: () => ({}),
       labelOf: (item) => item.key,
@@ -193,11 +192,11 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
         pluginKey: slashCommandKey,
         allowSpaces: false,
         startOfLine: false,
+        allow: () => resolveToggle(options.enabled),
 
         items: ({ query }) => {
-          const pool = options.hasAI()
-            ? options.items
-            : options.items.filter((item) => item.group !== 'ai');
+          const items = typeof options.items === 'function' ? options.items() : options.items;
+          const pool = options.hasAI() ? items : items.filter((item) => item.group !== 'ai');
 
           const needle = query.trim().toLowerCase();
           if (!needle) return pool;

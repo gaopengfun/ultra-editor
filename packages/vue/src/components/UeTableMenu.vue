@@ -3,7 +3,7 @@ import { nextTick, ref, watch } from 'vue';
 import UeMenu from './UeMenu.vue';
 import UeIcon from './UeIcon.vue';
 import UeColorPanel from './UeColorPanel.vue';
-import type { MessageKey, Translator } from '@ultra-editor/core';
+import type { MessageKey, Translator } from '@ultra-editor/core/lean';
 import type { TableAction } from '../types';
 
 const props = defineProps<{
@@ -50,6 +50,9 @@ const colorAnchor = ref({ x: 0, y: 0 });
 function openColor() {
   const row = colorRow.value;
   const menu = row?.closest<HTMLElement>('.ue-menu');
+  // Only the colour row itself opens this, so by definition it is mounted and
+  // inside the menu — the guard is for the types.
+  /* v8 ignore next */
   if (!row || !menu) return;
   const rowRect = row.getBoundingClientRect();
   colorAnchor.value = { x: menu.getBoundingClientRect().right + 6, y: rowRect.top - 6 };

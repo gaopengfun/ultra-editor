@@ -1,6 +1,7 @@
 import { Node as TiptapNode, mergeAttributes } from '@tiptap/core';
 import { isBrowser } from '../utils/env';
 import { createTranslator, type LocaleName, type Messages, type Translator } from '../i18n';
+import { ULTRA_EDITOR_OPTIONS_META } from './runtime-options';
 
 export const MIN_COLUMNS = 1;
 export const MAX_COLUMNS = 5;
@@ -17,6 +18,7 @@ declare module '@tiptap/core' {
 export interface ColumnBlockOptions {
   locale: LocaleName;
   messages: Partial<Messages>;
+  translator?: () => Translator;
 }
 
 /** A single card. Not in the `block` group, so it can only exist inside a columnBlock. */
@@ -55,7 +57,8 @@ export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
   addOptions() {
     return {
       locale: 'zh-CN',
-      messages: {}
+      messages: {},
+      translator: undefined
     };
   },
 
@@ -89,8 +92,13 @@ export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
           const columns = [];
           for (let i = 0; i < total; i++) {
             const filled = columnType.createAndFill();
+            /* v8 ignore next */
             if (filled) columns.push(filled);
           }
+          // `column` holds `block+`, which `createAndFill` always satisfies with an
+          // empty paragraph — so neither guard above can fire. Both are here to keep
+          // a schema change from silently inserting a malformed block.
+          /* v8 ignore next */
           if (!columns.length) return false;
           return commands.insertContent(this.type.create(null, columns).toJSON());
         }
@@ -99,7 +107,8 @@ export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
 
   addNodeView() {
     if (!isBrowser()) return null;
-    const t: Translator = createTranslator(this.options.locale, this.options.messages);
+    const fallback: Translator = createTranslator(this.options.locale, this.options.messages);
+    const t = () => this.options.translator?.() ?? fallback;
 
     return ({ editor, getPos }) => {
       const dom = document.createElement('div');
@@ -114,10 +123,15 @@ export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
 
       // Re-resolve on every action: the closed-over node/pos go stale the moment
       // anything above this block changes.
+      // Tiptap always hands a node view a `getPos` function, and a live position
+      // always resolves back to this node — the two fallbacks below only cover a
+      // torn-down view, which already leaves through the `pos == null` arm.
       const current = () => {
+        /* v8 ignore next */
         const pos = typeof getPos === 'function' ? getPos() : null;
         if (pos == null) return null;
         const node = editor.state.doc.nodeAt(pos);
+        /* v8 ignore next */
         return node && node.type.name === 'columnBlock' ? { pos, node } : null;
       };
 
@@ -137,16 +151,19 @@ export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
         return button;
       };
 
-      const addButton = makeButton(t('columns.add'), ICON.add, false, () => {
+      const addButton = makeButton(t()('columns.add'), ICON.add, false, () => {
+        if (!editor.isEditable) return;
         const cur = current();
         if (!cur || cur.node.childCount >= MAX_COLUMNS) return;
         const column = editor.schema.nodes.column.createAndFill();
+        /* v8 ignore next */
         if (!column) return;
         editor.view.dispatch(editor.state.tr.insert(cur.pos + cur.node.nodeSize - 1, column));
         editor.view.focus();
       });
 
-      const removeButton = makeButton(t('columns.remove'), ICON.sub, false, () => {
+      const removeButton = makeButton(t()('columns.remove'), ICON.sub, false, () => {
+        if (!editor.isEditable) return;
         const cur = current();
         if (!cur || cur.node.childCount <= MIN_COLUMNS) return;
         const last = cur.node.child(cur.node.childCount - 1);
@@ -155,7 +172,8 @@ export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
         editor.view.focus();
       });
 
-      const deleteButton = makeButton(t('columns.delete'), ICON.del, true, () => {
+      const deleteButton = makeButton(t()('columns.delete'), ICON.del, true, () => {
+        if (!editor.isEditable) return;
         const cur = current();
         if (!cur) return;
         editor
@@ -165,22 +183,47 @@ export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
           .run();
       });
 
-      const syncDisabled = (count: number) => {
-        addButton.disabled = count >= MAX_COLUMNS;
-        removeButton.disabled = count <= MIN_COLUMNS;
+      let currentCount = MIN_COLUMNS;
+      const syncDisabled = (count = currentCount) => {
+        currentCount = count;
+        addButton.disabled = !editor.isEditable || count >= MAX_COLUMNS;
+        removeButton.disabled = !editor.isEditable || count <= MIN_COLUMNS;
+        deleteButton.disabled = !editor.isEditable;
       };
 
       toolbar.append(addButton, removeButton, deleteButton);
       dom.append(toolbar, contentDOM);
 
+      // The node is provably in the document while its own view is being built, so
+      // the `??` fallbacks are for the type, not for a case that can happen.
       const initial = current();
+      /* v8 ignore next */
       contentDOM.setAttribute('data-cols', String(initial?.node.childCount ?? MIN_COLUMNS));
+      /* v8 ignore next */
       syncDisabled(initial?.node.childCount ?? MIN_COLUMNS);
+
+      const syncRuntimeOptions = ({
+        transaction
+      }: {
+        transaction: import('@tiptap/pm/state').Transaction;
+      }) => {
+        if (!transaction.getMeta(ULTRA_EDITOR_OPTIONS_META)) return;
+        addButton.title = t()('columns.add');
+        removeButton.title = t()('columns.remove');
+        deleteButton.title = t()('columns.delete');
+      };
+      editor.on('transaction', syncRuntimeOptions);
+      const syncEditable = () => syncDisabled();
+      editor.on('update', syncEditable);
 
       return {
         dom,
         contentDOM,
         update: (updatedNode) => {
+          // ProseMirror only calls a node view's `update` when the incoming node has
+          // the same type (CustomNodeViewDesc gates on `this.node.type == node.type`
+          // unless the spec opts into `multiType`, which this one does not).
+          /* v8 ignore next */
           if (updatedNode.type.name !== 'columnBlock') return false;
           contentDOM.setAttribute('data-cols', String(updatedNode.childCount));
           syncDisabled(updatedNode.childCount);
@@ -190,6 +233,10 @@ export const ColumnBlock = TiptapNode.create<ColumnBlockOptions>({
         ignoreMutation: (mutation) => {
           if (mutation.type === 'selection') return false;
           return !contentDOM.contains(mutation.target as Node);
+        },
+        destroy: () => {
+          editor.off('transaction', syncRuntimeOptions);
+          editor.off('update', syncEditable);
         }
       };
     };

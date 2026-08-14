@@ -17,15 +17,18 @@ export interface GhostTextOptions {
    */
   enabled: Toggle;
   /** Idle time before a completion is requested, in ms. */
-  delay: number;
+  delay: number | (() => number);
   /** Minimum characters in the current block before suggesting anything. */
   minChars: number;
   /** How much preceding text to send as context, in characters. */
   contextLength: number;
-  locale?: string;
+  locale?: string | (() => string);
   /** Badge shown beside the suggestion, e.g. "Tab to accept". */
-  hint: string;
+  hint: string | (() => string);
 }
+
+const resolveValue = <T>(value: T | (() => T)): T =>
+  typeof value === 'function' ? (value as () => T)() : value;
 
 interface GhostState {
   text: string;
@@ -63,7 +66,11 @@ function shouldSuggest(state: EditorState, minChars: number): boolean {
   if (!(selection instanceof TextSelection) || !selection.empty) return false;
   if (isAIStreaming(state)) return false;
 
+  // For a TextSelection `empty` means anchor and head sit on the same position,
+  // which is exactly when `$cursor` is non-null — so the check above has already
+  // ruled this out. Kept as a type narrowing, not as a case that can happen.
   const { $cursor } = selection as TextSelection;
+  /* v8 ignore next */
   if (!$cursor) return false;
   if (!$cursor.parent.isTextblock) return false;
   if ($cursor.parent.type.name === 'codeBlock') return false;
@@ -107,6 +114,10 @@ export const GhostText = Extension.create<GhostTextOptions>({
           .chain()
           .focus()
           .command(({ tr, dispatch }) => {
+            // Guards the dry run Tiptap performs under `editor.can()`. A keyboard
+            // shortcut is never dry-run, so nothing reaches this with no dispatch —
+            // but a command that mutates during a probe is a trap worth keeping shut.
+            /* v8 ignore else */
             if (dispatch) {
               tr.insertText(suggestion.text, suggestion.pos);
               tr.setMeta(ghostKey, { clear: true } satisfies GhostMeta);
@@ -129,8 +140,6 @@ export const GhostText = Extension.create<GhostTextOptions>({
 
   addProseMirrorPlugins() {
     const options = this.options;
-    const hint = options.hint;
-
     return [
       new Plugin<GhostState | null>({
         key: ghostKey,
@@ -152,9 +161,11 @@ export const GhostText = Extension.create<GhostTextOptions>({
             const suggestion = ghostKey.getState(state);
             if (!suggestion || !isBrowser()) return DecorationSet.empty;
             return DecorationSet.create(state.doc, [
-              Decoration.widget(suggestion.pos, () => ghostWidget(suggestion.text, hint), {
-                side: 1
-              })
+              Decoration.widget(
+                suggestion.pos,
+                () => ghostWidget(suggestion.text, resolveValue(options.hint)),
+                { side: 1 }
+              )
             ]);
           }
         },
@@ -189,13 +200,22 @@ export const GhostText = Extension.create<GhostTextOptions>({
 
             try {
               for await (const chunk of provider.stream(
-                { task: 'complete', text: '', context, locale: options.locale },
+                {
+                  task: 'complete',
+                  text: '',
+                  context,
+                  locale: options.locale ? resolveValue(options.locale) : undefined
+                },
                 signal
               )) {
                 if (signal.aborted) return;
                 text += chunk;
 
                 // The document may have moved on while the model was thinking.
+                // Belt and braces: moving the cursor sets `selectionSet`, which
+                // drives the view update into `cancel()`, so in practice the abort
+                // check above catches this first.
+                /* v8 ignore next */
                 if (editorView.state.selection.from !== pos) return;
                 if (!text.trim()) continue;
 
@@ -218,7 +238,7 @@ export const GhostText = Extension.create<GhostTextOptions>({
             if (!resolveToggle(options.enabled) || !resolveProvider(options.provider)) return;
             if (!editorView.editable) return;
             if (!shouldSuggest(editorView.state, options.minChars)) return;
-            timer = setTimeout(() => void request(editorView), options.delay);
+            timer = setTimeout(() => void request(editorView), resolveValue(options.delay));
           };
 
           return {

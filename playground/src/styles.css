@@ -82,6 +82,60 @@ body {
   border-radius: 8px;
 }
 
+.pg-editor-state {
+  display: grid;
+  min-height: 430px;
+  place-items: center;
+  background: #fff;
+  border: 1px solid rgb(28 27 31 / 16%);
+  border-radius: 8px;
+}
+
+[data-theme='dark'] .pg-editor-state {
+  background: #1b1b20;
+  border-color: rgb(230 225 233 / 18%);
+}
+
+.pg-editor-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgb(103 80 164 / 22%);
+  border-top-color: #6750a4;
+  border-radius: 50%;
+  animation: pg-spin 700ms linear infinite;
+}
+
+.pg-editor-state--error {
+  align-content: center;
+  gap: 12px;
+  color: #b3261e;
+  font-size: 14px;
+}
+
+.pg-editor-retry {
+  min-height: 32px;
+  padding: 0 14px;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+@keyframes pg-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-editor-spinner {
+    animation: none;
+  }
+}
+
 .pg-output {
   margin-top: 24px;
   font-size: 13px;

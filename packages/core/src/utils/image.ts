@@ -49,6 +49,25 @@ export interface ImageTransform {
   crop?: { left: number; top: number; width: number; height: number };
 }
 
+export interface ImageProcessingLimits {
+  /** Reject decoded sources above this pixel count before allocating a canvas. */
+  maxSourcePixels?: number;
+  /** Downscale exports so their canvas never exceeds this pixel count. */
+  maxOutputPixels?: number;
+  /** Downscale exports so neither canvas edge exceeds this size. */
+  maxDimension?: number;
+}
+
+export const DEFAULT_IMAGE_PROCESSING_LIMITS: Required<ImageProcessingLimits> = {
+  maxSourcePixels: 80_000_000,
+  maxOutputPixels: 16_000_000,
+  maxDimension: 8192
+};
+
+function positiveLimit(value: number | undefined, fallback: number) {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
 /**
  * Rasterise a transform into a new blob. Rotation is a real pixel rotation, not
  * a CSS transform, so the result survives serialisation into plain HTML.
@@ -56,11 +75,23 @@ export interface ImageTransform {
 export async function transformImage(
   src: string,
   transform: ImageTransform,
-  fetchImage: ImageFetcher = defaultImageFetcher
+  fetchImage: ImageFetcher = defaultImageFetcher,
+  limits: ImageProcessingLimits = {}
 ): Promise<Blob> {
   const { url, revoke } = await srcToObjectUrl(src, fetchImage);
   try {
     const img = await loadImage(url);
+    const maxSourcePixels = positiveLimit(
+      limits.maxSourcePixels,
+      DEFAULT_IMAGE_PROCESSING_LIMITS.maxSourcePixels
+    );
+    if (
+      !img.naturalWidth ||
+      !img.naturalHeight ||
+      img.naturalWidth * img.naturalHeight > maxSourcePixels
+    ) {
+      throw new Error('image-too-large-to-process');
+    }
     const crop = transform.crop ?? {
       left: 0,
       top: 0,
@@ -69,10 +100,26 @@ export async function transformImage(
     };
     const rotate = (transform.rotate ?? 0) % 360;
     const quarterTurn = Math.abs(rotate) === 90 || Math.abs(rotate) === 270;
+    const sourceWidth = quarterTurn ? crop.height : crop.width;
+    const sourceHeight = quarterTurn ? crop.width : crop.height;
+    const maxOutputPixels = positiveLimit(
+      limits.maxOutputPixels,
+      DEFAULT_IMAGE_PROCESSING_LIMITS.maxOutputPixels
+    );
+    const maxDimension = positiveLimit(
+      limits.maxDimension,
+      DEFAULT_IMAGE_PROCESSING_LIMITS.maxDimension
+    );
+    const outputScale = Math.min(
+      1,
+      maxDimension / sourceWidth,
+      maxDimension / sourceHeight,
+      Math.sqrt(maxOutputPixels / (sourceWidth * sourceHeight))
+    );
 
     const canvas = document.createElement('canvas');
-    canvas.width = quarterTurn ? crop.height : crop.width;
-    canvas.height = quarterTurn ? crop.width : crop.height;
+    canvas.width = Math.max(1, Math.round(sourceWidth * outputScale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * outputScale));
 
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('canvas-unavailable');
@@ -86,10 +133,10 @@ export async function transformImage(
       crop.top,
       crop.width,
       crop.height,
-      -crop.width / 2,
-      -crop.height / 2,
-      crop.width,
-      crop.height
+      -(crop.width * outputScale) / 2,
+      -(crop.height * outputScale) / 2,
+      crop.width * outputScale,
+      crop.height * outputScale
     );
 
     return await canvasToBlob(canvas);
@@ -102,5 +149,6 @@ export async function transformImage(
 export const rotateImage = (
   src: string,
   degrees: 90 | -90,
-  fetchImage?: ImageFetcher
-): Promise<Blob> => transformImage(src, { rotate: degrees }, fetchImage);
+  fetchImage?: ImageFetcher,
+  limits?: ImageProcessingLimits
+): Promise<Blob> => transformImage(src, { rotate: degrees }, fetchImage, limits);

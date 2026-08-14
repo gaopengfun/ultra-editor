@@ -5,7 +5,12 @@ export {
   type ImageResizeConfig
 } from './image-figure';
 export { Column, ColumnBlock, MIN_COLUMNS, MAX_COLUMNS, type ColumnBlockOptions } from './columns';
-export { UltraCodeBlock, type UltraCodeBlockOptions } from './code-block';
+export {
+  UltraCodeBlock,
+  loadCommonLanguages,
+  refreshCodeHighlighting,
+  type UltraCodeBlockOptions
+} from './code-block';
 export { ColorTableCell, ColorTableHeader } from './table-cells';
 export { ResizableTableRow } from './table-row';
 export {
@@ -14,7 +19,16 @@ export {
   type UploadError,
   type UploadErrorCode
 } from './image-upload';
-export { AIStream, aiStreamRange, isAIStreaming, type AIStreamRange } from './ai-stream';
+export {
+  AIStream,
+  AI_STREAM_TRANSACTION_META,
+  aiStreamRange,
+  isAIStreaming,
+  isAIStreamTransaction,
+  type AIStreamRange
+} from './ai-stream';
+export { ULTRA_EDITOR_OPTIONS_META } from './runtime-options';
+export { MarkdownPaste, markdownPasteKey, type MarkdownPasteOptions } from './markdown-paste';
 export { GhostText, ghostSuggestion, type GhostTextOptions } from './ghost-text';
 export {
   SlashCommand,

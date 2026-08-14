@@ -29,11 +29,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Verify
+        run: pnpm verify
+
       - name: Create release PR or publish to npm
         uses: changesets/action@v1
         with:
           version: pnpm version-packages
-          publish: pnpm release
+          publish: pnpm exec changeset publish
           commit: 'chore(release): 发布新版本'
           title: 'chore(release): 发布新版本'
         env:

@@ -26,6 +26,7 @@ export interface AnthropicProviderOptions {
 interface AnthropicEvent {
   type?: string;
   delta?: { type?: string; text?: string };
+  error?: { message?: string };
 }
 
 /** Anthropic Messages API provider (streaming). */
@@ -35,7 +36,7 @@ export function createAnthropicProvider(options: AnthropicProviderOptions = {}):
     baseURL = 'https://api.anthropic.com/v1',
     model = 'claude-sonnet-5',
     maxTokens = 2048,
-    temperature = 0.7,
+    temperature,
     headers = {},
     allowBrowser = false,
     promptFor: buildPrompt = promptFor,
@@ -60,7 +61,7 @@ export function createAnthropicProvider(options: AnthropicProviderOptions = {}):
           model,
           stream: true,
           max_tokens: maxTokens,
-          temperature,
+          ...(temperature !== undefined ? { temperature } : {}),
           system: prompt.system,
           messages: [{ role: 'user', content: prompt.user }]
         })
@@ -74,6 +75,9 @@ export function createAnthropicProvider(options: AnthropicProviderOptions = {}):
           event = JSON.parse(payload) as AnthropicEvent;
         } catch {
           continue;
+        }
+        if (event.type === 'error') {
+          throw new Error(`ai-stream-error: ${event.error?.message ?? 'unknown'}`);
         }
         if (event.type === 'message_stop') return;
         if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta') {

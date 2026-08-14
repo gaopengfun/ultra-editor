@@ -18,6 +18,9 @@ const DEL = 0x7f;
 function forProtocolDetection(url: string): string {
   let cleaned = '';
   for (const char of url) {
+    // `for...of` walks code points, so `char` is never empty and `codePointAt`
+    // never comes back undefined — the `??` is for the type, not for a real case.
+    /* v8 ignore next */
     const code = char.codePointAt(0) ?? 0;
     if (code <= SPACE || code === DEL) continue;
     cleaned += char;

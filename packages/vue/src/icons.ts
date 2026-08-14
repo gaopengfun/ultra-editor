@@ -65,5 +65,7 @@ export const ICONS: Record<string, string> = {
   chevronRight: '<polyline points="9 6 15 12 9 18"/>',
   flipH: '<path d="M12 3v18"/><path d="M8 7 4 12l4 5V7Z"/><path d="M16 7l4 5-4 5V7Z"/>',
   flipV: '<path d="M3 12h18"/><path d="M7 8 12 4l5 4H7Z"/><path d="M7 16l5 4 5-4H7Z"/>',
-  reset: '<path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 9 8 9"/>'
+  reset: '<path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 4 3 9 8 9"/>',
+  markdown:
+    '<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 15.5v-7l3 3 3-3v7"/><path d="M17.5 8.5v5"/><polyline points="15.5 11.5 17.5 13.5 19.5 11.5"/>'
 };

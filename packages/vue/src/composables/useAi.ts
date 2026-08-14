@@ -9,7 +9,7 @@ import {
   type AITask,
   type LocaleName,
   type Translator
-} from '@ultra-editor/core';
+} from '@ultra-editor/core/lean';
 
 export type AIPhase = 'prompt' | 'running' | 'done' | 'error';
 /** `insert` streams into the document; `transform` streams into a preview panel. */
@@ -40,6 +40,9 @@ const MARGIN = 16;
 function blockContent(text: string) {
   return text.split(/\n{2,}/).map((block) => ({
     type: 'paragraph',
+    // Every caller trims first, so `split` cannot hand back an empty block here.
+    // Kept because an empty text node is invalid in ProseMirror and throws.
+    /* v8 ignore next */
     content: block ? [{ type: 'text', text: block.replace(/\n/g, ' ') }] : []
   }));
 }
@@ -63,6 +66,7 @@ function inlineContent(text: string) {
 interface Target {
   from: number;
   to: number;
+  valid: boolean;
   /** True when the selection sits inside a single text block without filling it. */
   inline: boolean;
   /** Position just after the block holding the selection — where "insert below" goes. */
@@ -109,6 +113,39 @@ export function useAi(
   let target: Target | null = null;
   let context = '';
   let locked = false;
+  let lockedEditor: Editor | null = null;
+  let watchedEditor: Editor | null = null;
+  let renderFrame: number | null = null;
+  let pendingInsertText: string | null = null;
+  /**
+   * Bumped whenever a run is abandoned. `abort()` only resolves on a later
+   * microtask, so a replaced run still gets its `onAbort`/`onChunk` after its
+   * successor has already set `phase` to running — without a token to check, the
+   * dead run stomps the live one's state back to `done`.
+   */
+  let generation = 0;
+
+  function cancelPendingRender() {
+    if (renderFrame !== null) cancelAnimationFrame(renderFrame);
+    renderFrame = null;
+    pendingInsertText = null;
+  }
+
+  function flushPendingRender(mine: number) {
+    if (renderFrame !== null) cancelAnimationFrame(renderFrame);
+    renderFrame = null;
+    if (mine !== generation || pendingInsertText === null) return;
+    const text = pendingInsertText;
+    pendingInsertText = null;
+    state.text = text;
+    editor.value?.commands.aiStreamSet(text);
+  }
+
+  function scheduleInsertRender(text: string, mine: number) {
+    pendingInsertText = text;
+    if (renderFrame !== null) return;
+    renderFrame = requestAnimationFrame(() => flushPendingRender(mine));
+  }
 
   /**
    * The document stays editable while a transform streams into the panel, so the
@@ -120,27 +157,48 @@ export function useAi(
   const followEdits = ({ transaction }: { transaction: Transaction }) => {
     if (!target || !transaction.docChanged) return;
     const size = transaction.doc.content.size;
-    const from = Math.min(transaction.mapping.map(target.from, -1), size);
-    const to = Math.min(transaction.mapping.map(target.to, 1), size);
+    let from = target.from;
+    let to = target.to;
+    let blockAfter = target.blockAfter;
+    let valid = target.valid;
+
+    for (const map of transaction.mapping.maps) {
+      if (from < to) {
+        map.forEach((oldStart, oldEnd) => {
+          if (oldEnd > oldStart && oldStart <= from && oldEnd >= to) valid = false;
+        });
+      }
+      const nextFrom = map.map(from, -1);
+      const nextTo = map.map(to, 1);
+      from = Math.min(nextFrom, nextTo);
+      to = Math.max(nextFrom, nextTo);
+      blockAfter = map.map(blockAfter, 1);
+    }
+
+    if (target.from < target.to && from === to) valid = false;
     target = {
       ...target,
-      from: Math.min(from, to),
-      to: Math.max(from, to),
-      blockAfter: Math.min(transaction.mapping.map(target.blockAfter, 1), size)
+      valid,
+      from: Math.min(from, size),
+      to: Math.min(to, size),
+      blockAfter: Math.min(blockAfter, size)
     };
   };
 
   function watchEdits(on: boolean) {
     const instance = editor.value;
-    if (!instance) return;
-    if (on) instance.on('transaction', followEdits);
-    else instance.off('transaction', followEdits);
+    if (!on) {
+      watchedEditor?.off('transaction', followEdits);
+      watchedEditor = null;
+      return;
+    }
+    if (!instance || watchedEditor === instance) return;
+    watchedEditor?.off('transaction', followEdits);
+    instance.on('transaction', followEdits);
+    watchedEditor = instance;
   }
 
-  function anchorToCursor() {
-    const instance = editor.value;
-    if (!instance) return;
-
+  function anchorToCursor(instance: Editor) {
     const coords = instance.view.coordsAtPos(instance.state.selection.to);
     state.anchor = {
       x: Math.max(MARGIN, Math.min(coords.left, window.innerWidth - PANEL_WIDTH - MARGIN)),
@@ -148,10 +206,7 @@ export function useAi(
     };
   }
 
-  function capture() {
-    const instance = editor.value;
-    if (!instance) return;
-
+  function capture(instance: Editor) {
     const { from, to, $from, $to } = instance.state.selection;
 
     const sameBlock = $from.sameParent($to);
@@ -161,6 +216,7 @@ export function useAi(
     target = {
       from,
       to,
+      valid: true,
       inline: sameBlock && $from.parent.isTextblock && !fillsBlock,
       blockAfter: $to.depth > 0 ? $to.after($to.depth) : to
     };
@@ -171,17 +227,30 @@ export function useAi(
   /** Locking is only for insert mode, where the model writes into the live document. */
   function lockEditor(on: boolean) {
     const instance = editor.value;
-    if (!instance) return;
     if (on) {
       locked = true;
-      instance.setEditable(false);
+      lockedEditor = instance!;
+      instance!.setEditable(false);
       return;
     }
     if (!locked) return;
     locked = false;
     // Restore what the host currently wants, not what was true when we locked —
     // `editable` may have been switched to false while the model was writing.
-    instance.setEditable(isEditable());
+    const targetEditor = lockedEditor!;
+    if (!targetEditor.isDestroyed) targetEditor.setEditable(isEditable());
+    lockedEditor = null;
+  }
+
+  /**
+   * Let go of the running generation: stop the stream and disown its callbacks.
+   * Always abort — an orphaned stream keeps costing money after nobody is watching.
+   */
+  function abandon() {
+    run?.abort();
+    run = null;
+    cancelPendingRender();
+    generation += 1;
   }
 
   function execute() {
@@ -192,6 +261,18 @@ export function useAi(
       state.error = t.value('ai.noProvider');
       return;
     }
+
+    if (state.mode === 'transform' && (!target || !target.valid)) {
+      watchEdits(false);
+      state.phase = 'error';
+      state.error = t.value('ai.selectionChanged');
+      return;
+    }
+
+    // Starting again while one is in flight replaces it; the old one must not be
+    // left streaming into the state this run now owns.
+    abandon();
+    const mine = generation;
 
     const selectionText = target
       ? instance.state.doc.textBetween(target.from, target.to, '\n\n', ' ')
@@ -220,16 +301,31 @@ export function useAi(
       },
       {
         onChunk: (_chunk, accumulated) => {
-          state.text = accumulated;
-          if (insert) editor.value?.commands.aiStreamSet(accumulated);
+          /* v8 ignore next -- an abandoned run is routed to onAbort by runAITask */
+          if (mine !== generation) return;
+          if (insert) scheduleInsertRender(accumulated, mine);
+          else state.text = accumulated;
         },
         onDone: () => {
+          /* v8 ignore next -- an abandoned run is routed to onAbort by runAITask */
+          if (mine !== generation) return;
+          if (insert) flushPendingRender(mine);
           state.phase = 'done';
         },
+        // The only handler an abandoned run can still reach: `abort()` settles on a
+        // later microtask, by which point its replacement has already set `running`.
+        // The other three are unreachable once aborted — runAITask stops pulling
+        // chunks and routes the outcome here rather than to done/error.
         onAbort: () => {
-          state.phase = 'done';
+          if (mine === generation) {
+            if (insert) flushPendingRender(mine);
+            state.phase = 'done';
+          }
         },
         onError: (error) => {
+          /* v8 ignore next -- an abandoned run is routed to onAbort by runAITask */
+          if (mine !== generation) return;
+          cancelPendingRender();
           state.phase = 'error';
           state.error = error.message || t.value('ai.failed');
           if (insert) {
@@ -246,13 +342,24 @@ export function useAi(
   }
 
   function start(task: AITask) {
-    if (!editor.value) return;
+    const instance = editor.value;
+    if (!instance) return;
 
-    capture();
-    anchorToCursor();
+    const nextMode = SELECTION_TASKS.includes(task) ? 'transform' : 'insert';
+    if (state.open) {
+      abandon();
+      watchEdits(false);
+      if (state.mode === 'insert' && nextMode !== 'insert') {
+        instance.commands.aiStreamDiscard();
+        lockEditor(false);
+      }
+    }
+
+    capture(instance);
+    anchorToCursor(instance);
 
     state.task = task;
-    state.mode = SELECTION_TASKS.includes(task) ? 'transform' : 'insert';
+    state.mode = nextMode;
     state.instruction = '';
     state.text = '';
     state.error = '';
@@ -260,6 +367,7 @@ export function useAi(
 
     if (NEEDS_INSTRUCTION.includes(task)) {
       state.phase = 'prompt';
+      if (nextMode === 'transform') watchEdits(true);
       return;
     }
     execute();
@@ -274,11 +382,10 @@ export function useAi(
     run?.abort();
   }
 
-  /** Always abort — an orphaned stream keeps costing money after nobody is watching. */
   function cleanup() {
-    run?.abort();
-    run = null;
+    abandon();
     watchEdits(false);
+    lockEditor(false);
     target = null;
     state.open = false;
     state.text = '';
@@ -290,6 +397,7 @@ export function useAi(
     if (!instance) return;
 
     if (state.mode === 'insert') {
+      flushPendingRender(generation);
       instance.commands.aiStreamAccept();
       lockEditor(false);
       cleanup();
@@ -299,6 +407,12 @@ export function useAi(
     const text = state.text.trim();
     if (!text || !target) {
       cleanup();
+      return;
+    }
+    if (!target.valid) {
+      watchEdits(false);
+      state.phase = 'error';
+      state.error = t.value('ai.selectionChanged');
       return;
     }
 
@@ -318,19 +432,16 @@ export function useAi(
   }
 
   function discard() {
-    const instance = editor.value;
-    if (instance && state.mode === 'insert') {
-      run?.abort();
-      instance.commands.aiStreamDiscard();
-      lockEditor(false);
-    }
+    const instance = editor.value ?? lockedEditor;
+    run?.abort();
+    if (instance && !instance.isDestroyed) instance.commands.aiStreamDiscard();
+    lockEditor(false);
     cleanup();
   }
 
   /** Throw away the previous attempt — including whatever it wrote — and run again. */
   function retry() {
-    run?.abort();
-    run = null;
+    abandon();
     if (state.mode === 'insert') {
       editor.value?.commands.aiStreamDiscard();
       lockEditor(false);
@@ -342,9 +453,11 @@ export function useAi(
 
   // A route change mid-generation must not leave the stream running.
   onScopeDispose(() => {
-    run?.abort();
-    run = null;
+    abandon();
     watchEdits(false);
+    const instance = editor.value ?? lockedEditor;
+    if (instance && !instance.isDestroyed) instance.commands.aiStreamDiscard();
+    lockEditor(false);
   });
 
   return { state, start, submit, stop, retry, accept, discard };

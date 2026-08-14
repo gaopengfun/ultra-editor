@@ -5,8 +5,10 @@ import type {
   Messages,
   SlashItem,
   UploadHandler,
-  ImageFetcher
-} from '@ultra-editor/core';
+  ImageFetcher,
+  ImageProcessingLimits,
+  LowlightInstance
+} from '@ultra-editor/core/lean';
 
 export type TableAction =
   | 'rowBefore'
@@ -45,6 +47,16 @@ export interface UltraEditorProps {
   upload?: UploadHandler;
   fetchImage?: ImageFetcher;
   maxImageSize?: number;
+  uploadConcurrency?: number;
+  /** Resource ceilings used while rotating or cropping decoded images. */
+  imageProcessingLimits?: ImageProcessingLimits;
+  /** Syntax highlighter with only the languages the host chooses to register. */
+  lowlight?: LowlightInstance;
+  /**
+   * Markdown conveniences: the source-mode toggle in the toolbar and the
+   * conversion of pasted Markdown. Both on unless this is `false`.
+   */
+  markdown?: boolean;
   ai?: UltraEditorAIProps;
   toolbar?: boolean;
   statusbar?: boolean;

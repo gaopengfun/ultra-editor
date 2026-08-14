@@ -22,6 +22,7 @@ export interface OpenAIProviderOptions {
 
 interface ChatChunk {
   choices?: Array<{ delta?: { content?: string | null } }>;
+  error?: { message?: string };
 }
 
 /**
@@ -78,6 +79,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions = {}): AIPro
           // Keep-alive comments and vendor-specific noise — skip rather than die.
           continue;
         }
+        if (chunk.error) throw new Error(`ai-stream-error: ${chunk.error.message ?? 'unknown'}`);
         const delta = chunk.choices?.[0]?.delta?.content;
         if (delta) yield delta;
       }

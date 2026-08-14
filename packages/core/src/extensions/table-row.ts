@@ -14,6 +14,7 @@ type Drag = {
   rowPos: number;
   startY: number;
   startHeight: number;
+  initialHeight: string;
 } | null;
 
 /** Is the pointer within grabbing distance of a row's bottom edge? */
@@ -34,7 +35,11 @@ function rowBorderAt(view: EditorView, event: MouseEvent) {
         break;
       }
     }
+    // `posAtDOM` only throws for DOM outside the editor, which the `view.dom.contains`
+    // check above has already ruled out. Kept because it is the documented failure
+    // mode, and a stray row is exactly what this function exists to survive.
   } catch {
+    /* v8 ignore next */
     return null;
   }
   if (rowPos == null) return null;
@@ -71,10 +76,21 @@ function rowResizingPlugin() {
   return new Plugin<{ activeRow: number | null }>({
     key: rowResizeKey,
 
-    view() {
+    view(editorView) {
       return {
+        update(view) {
+          if (view.editable) return;
+          endDrag?.();
+          view.dom.style.cursor = '';
+          view.dom.classList.remove('ue-row-resizing');
+          if ((rowResizeKey.getState(view.state)?.activeRow ?? null) != null) {
+            view.dispatch(view.state.tr.setMeta(rowResizeKey, null));
+          }
+        },
         destroy() {
           endDrag?.();
+          editorView.dom.style.cursor = '';
+          editorView.dom.classList.remove('ue-row-resizing');
         }
       };
     },
@@ -95,6 +111,10 @@ function rowResizingPlugin() {
       },
       handleDOMEvents: {
         mousemove(view, event) {
+          if (!view.editable) {
+            view.dom.style.cursor = '';
+            return false;
+          }
           if (dragging) return false;
           const info = rowBorderAt(view, event);
           view.dom.style.cursor = info ? 'row-resize' : '';
@@ -113,6 +133,7 @@ function rowResizingPlugin() {
         },
 
         mousedown(view, event) {
+          if (!view.editable) return false;
           const info = rowBorderAt(view, event);
           if (!info) return false;
           event.preventDefault();
@@ -121,7 +142,8 @@ function rowResizingPlugin() {
             row: info.row,
             rowPos: info.rowPos,
             startY: event.clientY,
-            startHeight: info.row.getBoundingClientRect().height
+            startHeight: info.row.getBoundingClientRect().height,
+            initialHeight: info.row.style.height
           };
           dragging = drag;
 
@@ -144,6 +166,13 @@ function rowResizingPlugin() {
             endDrag = null;
           };
 
+          const cancel = () => {
+            detach();
+            drag.row.style.height = drag.initialHeight;
+            view.dom.style.cursor = '';
+            view.dom.classList.remove('ue-row-resizing');
+          };
+
           const onUp = (e: MouseEvent) => {
             detach();
 
@@ -163,7 +192,7 @@ function rowResizingPlugin() {
             view.dispatch(tr);
           };
 
-          endDrag = detach;
+          endDrag = cancel;
           document.addEventListener('mousemove', onMove);
           document.addEventListener('mouseup', onUp);
           return true;

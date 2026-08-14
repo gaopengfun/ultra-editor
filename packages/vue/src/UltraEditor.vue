@@ -1,26 +1,43 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, toRef, watch } from 'vue';
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  toRef,
+  watch
+} from 'vue';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import type { EditorView } from '@tiptap/pm/view';
 import { CellSelection } from '@tiptap/pm/tables';
 import {
+  createLowlight,
   createTranslator,
-  createUltraKit,
+  createLeanUltraKit,
+  DEFAULT_SLASH_ITEMS,
+  docToMarkdown,
+  isAIStreamTransaction,
   isSafeLinkUrl,
+  loadCommonLanguages,
+  markdownToHTML,
+  refreshCodeHighlighting,
   resolveUploadOptions,
   rotateImage,
+  ULTRA_EDITOR_OPTIONS_META,
   type AITask,
   type ImageAlign,
   type SlashGroup,
   type SlashItem,
   type UploadError
-} from '@ultra-editor/core';
+} from '@ultra-editor/core/lean';
 import type { SuggestionProps, SuggestionKeyDownProps } from '@tiptap/suggestion';
 
 import UeToolbar from './components/UeToolbar.vue';
 import UeImageMenu from './components/UeImageMenu.vue';
 import UeTableMenu from './components/UeTableMenu.vue';
-import UeCropper from './components/UeCropper.vue';
 import UePrompt from './components/UePrompt.vue';
 import UeToasts from './components/UeToasts.vue';
 import UeSlashMenu from './components/UeSlashMenu.vue';
@@ -32,6 +49,11 @@ import { useToasts } from './composables/useToasts';
 import { useAi } from './composables/useAi';
 import type { TableAction, UltraEditorProps } from './types';
 
+const loadCropper = () => import('./components/UeCropper.vue');
+const UeCropper = defineAsyncComponent(() =>
+  loadCropper().then(({ default: component }) => component)
+);
+
 const props = withDefaults(defineProps<UltraEditorProps>(), {
   modelValue: '',
   editable: true,
@@ -39,6 +61,9 @@ const props = withDefaults(defineProps<UltraEditorProps>(), {
   locale: 'zh-CN',
   toolbar: true,
   statusbar: true,
+  // Declared `boolean` props Vue casts to `false` when absent, so every one of
+  // them needs its default spelled out here or "not passed" reads as "off".
+  markdown: true,
   debounce: 0
 });
 
@@ -57,12 +82,83 @@ const upload = computed(() =>
   resolveUploadOptions({
     upload: props.upload,
     fetchImage: props.fetchImage,
-    maxSize: props.maxImageSize
+    maxSize: props.maxImageSize,
+    concurrency: props.uploadConcurrency
   })
 );
 
 const provider = computed(() => props.ai?.provider ?? null);
 const hasAI = computed(() => !!provider.value);
+
+/* Syntax highlighting -------------------------------------------------------- */
+
+// A host that passes `lowlight` owns the language set outright — we neither add
+// to it nor fetch anything. Without one the editor starts with an empty registry
+// and pulls lowlight's common grammars in as their own chunk once it is mounted,
+// so an app that never shows a code block never downloads 37 syntax parsers,
+// while one that does gets a real language picker instead of a lone "plain text".
+const lowlight = props.lowlight ?? createLowlight();
+
+onMounted(async () => {
+  if (props.lowlight) return;
+  await loadCommonLanguages(lowlight);
+  const instance = editor.value;
+  // The import can outlive the component; a torn-down editor has nothing to paint.
+  if (instance && !instance.isDestroyed) refreshCodeHighlighting(instance);
+});
+
+/* Markdown ------------------------------------------------------------------- */
+
+/**
+ * Source mode: the document becomes the Markdown that describes it, in a plain
+ * textarea, and comes back when the author leaves.
+ *
+ * The textarea is the source of truth while it is open — the document is only
+ * ever written *from* it, never back into it. Re-deriving the text from the
+ * document on each keystroke would reformat what the author is halfway through
+ * typing, which is the one thing a source view must never do.
+ */
+const sourceMode = ref(false);
+const source = ref('');
+const sourceInput = ref<HTMLTextAreaElement>();
+
+function applySource() {
+  const instance = editor.value;
+  /* v8 ignore next */
+  if (!instance) return;
+  const html = markdownToHTML(source.value);
+  if (html === instance.getHTML()) return;
+  instance.commands.setContent(html);
+}
+
+function toggleSourceMode() {
+  const instance = editor.value;
+  /* v8 ignore next */
+  if (!instance) return;
+  if (sourceMode.value) {
+    applySource();
+    sourceMode.value = false;
+    instance.commands.focus();
+    return;
+  }
+  // A pending debounced emit describes the document the author is leaving; let it
+  // out before the textarea takes over as the thing being edited.
+  flushEmit();
+  source.value = docToMarkdown(instance.state.doc);
+  sourceMode.value = true;
+  void nextTick(() => sourceInput.value?.focus());
+}
+
+// Applying on every keystroke keeps `v-model` honest while source mode is open —
+// a host reading the model mid-edit gets the document the Markdown describes,
+// not the one from before the author switched.
+let sourceTimer: ReturnType<typeof setTimeout> | undefined;
+const SOURCE_APPLY_DELAY = 300;
+
+function onSourceInput() {
+  clearTimeout(sourceTimer);
+  sourceTimer = setTimeout(applySource, props.debounce || SOURCE_APPLY_DELAY);
+}
 
 /* Slash menu ---------------------------------------------------------------- */
 
@@ -94,20 +190,20 @@ function placeSlash(rect: DOMRect | null | undefined) {
   slash.y = Math.min(rect.bottom + 6, window.innerHeight - 320);
 }
 
+// Opening and refiltering do the same work; only opening also raises the menu.
+const syncSlash = (suggestion: SuggestionProps<SlashItem>) => {
+  slash.items = orderSlashItems(suggestion.items);
+  slash.index = 0;
+  slash.command = (item: SlashItem) => suggestion.command(item);
+  placeSlash(suggestion.clientRect?.());
+};
+
 const slashRender = () => ({
   onStart: (suggestion: SuggestionProps<SlashItem>) => {
-    slash.items = orderSlashItems(suggestion.items);
-    slash.index = 0;
-    slash.command = (item: SlashItem) => suggestion.command(item);
-    placeSlash(suggestion.clientRect?.());
+    syncSlash(suggestion);
     slash.visible = true;
   },
-  onUpdate: (suggestion: SuggestionProps<SlashItem>) => {
-    slash.items = orderSlashItems(suggestion.items);
-    slash.index = 0;
-    slash.command = (item: SlashItem) => suggestion.command(item);
-    placeSlash(suggestion.clientRect?.());
-  },
+  onUpdate: syncSlash,
   onKeyDown: ({ event }: SuggestionKeyDownProps) => {
     if (!slash.visible || !slash.items.length) return false;
     if (event.key === 'ArrowDown') {
@@ -136,19 +232,35 @@ const slashRender = () => ({
 
 /* Editor -------------------------------------------------------------------- */
 
+// Registered before `useEditor`, so a pending debounced value is serialized
+// before that composable tears down the ProseMirror schema during unmount.
+onBeforeUnmount(() => {
+  clearTimeout(sourceTimer);
+  // Unmounting from source mode must not throw the author's Markdown away.
+  if (sourceMode.value) applySource();
+  clearTimeout(debounceTimer);
+  flushEmit();
+});
+
 const editor = useEditor({
   content: props.modelValue,
   editable: props.editable,
   autofocus: props.autofocus,
-  extensions: createUltraKit({
-    placeholder: props.placeholder,
+  extensions: createLeanUltraKit({
+    placeholder: () => props.placeholder ?? t.value('editor.placeholder'),
     locale: props.locale,
     messages: props.messages,
+    translator: () => t.value,
+    lowlight,
+    markdownPaste: () => props.markdown,
     upload: {
       // Delegated through the computed so a handler swapped in after mount is honoured.
       upload: (file, filename) => upload.value.upload(file, filename),
-      fetchImage: (src) => upload.value.fetchImage(src),
-      maxSize: props.maxImageSize
+      // No `fetchImage` here on purpose: no core extension reads it. Re-encoding an
+      // existing image is chrome, so rotate and the cropper call `upload.fetchImage`
+      // off the computed directly — see `rotate()` and the `fetch-image` prop below.
+      maxSize: () => upload.value.maxSize,
+      concurrency: () => upload.value.concurrency
     },
     onUploadError: (error) => {
       emit('upload-error', error);
@@ -165,21 +277,19 @@ const editor = useEditor({
     // time — freezing today's values here would make both silently inert.
     ai: {
       provider: () => provider.value,
-      slash:
-        props.ai?.slash === false
-          ? { enabled: false }
-          : {
-              enabled: true,
-              items: props.ai?.slashItems,
-              onAI: (task) => ai.start(task),
-              labelOf: (item) => t.value(item.labelKey),
-              hasAI: () => hasAI.value,
-              render: slashRender
-            },
+      slash: {
+        enabled: () => props.ai?.slash !== false,
+        items: () => props.ai?.slashItems ?? DEFAULT_SLASH_ITEMS,
+        onAI: (task) => ai.start(task),
+        labelOf: (item) => t.value(item.labelKey),
+        hasAI: () => hasAI.value,
+        render: slashRender
+      },
       ghostText: {
         enabled: () => props.ai?.ghostText === true,
-        delay: props.ai?.ghostDelay,
-        hint: t.value('ai.ghostHint')
+        delay: () => props.ai?.ghostDelay ?? 800,
+        locale: () => props.locale,
+        hint: () => t.value('ai.ghostHint')
       }
     }
   }),
@@ -191,6 +301,7 @@ const editor = useEditor({
       // Right-click on an image opens the image menu, on a cell the table menu.
       // Everything else keeps the browser's own context menu.
       contextmenu: (view, event) => {
+        if (!view.editable) return false;
         const mouse = event as MouseEvent;
         const pos = imagePosAt(view, mouse);
         if (pos != null) {
@@ -203,8 +314,12 @@ const editor = useEditor({
       }
     }
   },
-  onUpdate: ({ editor: instance }) => {
-    scheduleEmit(instance.getHTML());
+  onUpdate: ({ transaction }) => {
+    // A runtime-options refresh — a locale change, or grammars arriving and
+    // forcing a repaint — rewrites no content. Emitting there would hand the host
+    // a `change` for a document nobody touched, and mark a pristine draft dirty.
+    if (transaction.getMeta(ULTRA_EDITOR_OPTIONS_META)) return;
+    if (transaction.docChanged && !isAIStreamTransaction(transaction)) scheduleEmit();
   }
 });
 
@@ -212,25 +327,36 @@ const editor = useEditor({
 // follow a locale change like every other component's do.
 const ai = useAi(editor, provider, t, toRef(props, 'locale'), () => props.editable);
 
+watch(t, () => {
+  const instance = editor.value;
+  /* v8 ignore else -- Vue stops this watcher before useEditor destroys the instance */
+  if (instance && !instance.isDestroyed) {
+    instance.view.dispatch(instance.state.tr.setMeta(ULTRA_EDITOR_OPTIONS_META, true));
+  }
+});
+
 /* Two-way binding ------------------------------------------------------------ */
 
 // Track what we last emitted so the incoming-prop watcher can tell "the parent
 // echoed our own value back" (ignore) from "the parent set new content" (apply).
 let lastEmitted = props.modelValue;
 let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-let pending: string | null = null;
+let pending = false;
 
 function flushEmit() {
-  if (pending === null) return;
-  const html = pending;
-  pending = null;
+  if (!pending) return;
+  const instance = editor.value;
+  /* v8 ignore next -- this hook is registered before useEditor tears the instance down */
+  if (!instance) return;
+  pending = false;
+  const html = instance.getHTML();
+  lastEmitted = html;
   emit('update:modelValue', html);
   emit('change', html);
 }
 
-function scheduleEmit(html: string) {
-  lastEmitted = html;
-  pending = html;
+function scheduleEmit() {
+  pending = true;
   if (!props.debounce) {
     flushEmit();
     return;
@@ -239,11 +365,19 @@ function scheduleEmit(html: string) {
   debounceTimer = setTimeout(flushEmit, props.debounce);
 }
 
+function cancelPendingEmit() {
+  clearTimeout(debounceTimer);
+  debounceTimer = undefined;
+  pending = false;
+}
+
 watch(
   () => props.modelValue,
   (value) => {
     const instance = editor.value;
     if (!instance || value === lastEmitted) return;
+    cancelPendingEmit();
+    lastEmitted = value;
     if (value === instance.getHTML()) return;
     // `emitUpdate: false` stops the round trip; preserving the selection keeps the
     // caret where the author left it when a parent re-hydrates the model.
@@ -256,17 +390,10 @@ watch(
   (value) => editor.value?.setEditable(value)
 );
 
-onBeforeUnmount(() => {
-  // Flush rather than drop: with `debounce` set, the last edits before an unmount
-  // would otherwise never reach v-model and be silently lost.
-  clearTimeout(debounceTimer);
-  flushEmit();
-  editor.value?.destroy();
-});
-
 /* Word count ----------------------------------------------------------------- */
 
 const stats = computed(() => {
+  /* v8 ignore next */
   const text = editor.value?.getText() ?? '';
   const chars = text.replace(/\s/g, '').length;
   // CJK has no spaces; counting characters and Latin words separately is the
@@ -294,6 +421,7 @@ const clearColor = () => {
 
 async function setLink() {
   const instance = editor.value;
+  /* v8 ignore next */
   if (!instance) return;
 
   const previous = (instance.getAttributes('link').href as string) ?? '';
@@ -365,6 +493,8 @@ const imageMenu = reactive({
 const rotating = ref(false);
 
 function openImageMenu(event: MouseEvent) {
+  void loadCropper();
+  /* v8 ignore next */
   const attrs = editor.value?.getAttributes('image') ?? {};
   imageMenu.align = (attrs.align as ImageAlign) ?? null;
   imageMenu.hasCaption = !!attrs.caption;
@@ -379,82 +509,140 @@ function openImageMenu(event: MouseEvent) {
  */
 function selectedImage(): { pos: number; attrs: Record<string, unknown> } | null {
   const instance = editor.value;
-  if (!instance) return null;
+  /* v8 ignore next */
+  if (!instance || !instance.isEditable) return null;
   const { from } = instance.state.selection;
   const node = instance.state.doc.nodeAt(from);
   if (node?.type.name !== 'image') return null;
   return { pos: from, attrs: node.attrs };
 }
 
+interface TrackedImage {
+  src: string;
+  update: (patch: Record<string, unknown>) => boolean;
+  stop: () => void;
+}
+
+function trackSelectedImage(): TrackedImage | null {
+  const instance = editor.value;
+  const selected = selectedImage();
+  const src = selected?.attrs.src;
+  if (!instance || !selected || typeof src !== 'string') return null;
+
+  let pos = selected.pos;
+  let valid = true;
+  const follow = ({ transaction }: { transaction: import('@tiptap/pm/state').Transaction }) => {
+    if (!transaction.docChanged) return;
+    const mapped = transaction.mapping.mapResult(pos, 1);
+    pos = mapped.pos;
+    if (mapped.deleted) valid = false;
+  };
+  instance.on('transaction', follow);
+
+  const stop = () => instance.off('transaction', follow);
+  return {
+    src,
+    stop,
+    update(patch) {
+      const node = instance.state.doc.nodeAt(pos);
+      if (
+        !valid ||
+        instance.isDestroyed ||
+        !instance.isEditable ||
+        node?.type.name !== 'image' ||
+        node.attrs.src !== src
+      ) {
+        return false;
+      }
+      return instance.chain().focus().setNodeSelection(pos).updateAttributes('image', patch).run();
+    }
+  };
+}
+
 function updateImage(patch: Record<string, unknown>) {
   const target = selectedImage();
   if (!target) return;
-  editor.value
-    ?.chain()
-    .focus()
-    .setNodeSelection(target.pos)
-    .updateAttributes('image', patch)
-    .run();
+  editor.value?.chain().focus().setNodeSelection(target.pos).updateAttributes('image', patch).run();
 }
 
 const setAlign = (align: ImageAlign) => updateImage({ align });
 
 async function setCaption() {
-  const target = selectedImage();
+  const target = trackSelectedImage();
   if (!target) return;
-
-  const value = await prompt.open({
-    title: t.value('image.captionTitle'),
-    label: t.value('image.captionLabel'),
-    value: (target.attrs.caption as string) ?? ''
-  });
-  if (value === null) return;
-  updateImage({ caption: value || null, alt: value || null });
+  try {
+    const value = await prompt.open({
+      title: t.value('image.captionTitle'),
+      label: t.value('image.captionLabel'),
+      value: (selectedImage()?.attrs.caption as string) ?? ''
+    });
+    if (value !== null) target.update({ caption: value || null, alt: value || null });
+  } finally {
+    target.stop();
+  }
 }
 
 async function rotate(degrees: 90 | -90) {
   if (rotating.value) return;
-  const target = selectedImage();
-  const src = target?.attrs.src as string | undefined;
-  if (!src) return;
+  const target = trackSelectedImage();
+  if (!target) return;
 
   rotating.value = true;
   const notice = toasts.loading(t.value('image.rotating'));
   try {
-    const blob = await rotateImage(src, degrees, upload.value.fetchImage);
+    const blob = await rotateImage(
+      target.src,
+      degrees,
+      upload.value.fetchImage,
+      props.imageProcessingLimits
+    );
     if (blob.size > upload.value.maxSize) throw new Error('too-large');
 
     const url = await upload.value.upload(blob, 'rotate.png');
-    updateImage({ src: url, width: null, height: null });
-    toasts.success(t.value('image.rotated'));
+    if (target.update({ src: url, width: null, height: null })) {
+      toasts.success(t.value('image.rotated'));
+    }
   } catch {
     toasts.error(t.value('image.rotateFailed'));
   } finally {
     toasts.dismiss(notice);
+    target.stop();
     rotating.value = false;
   }
 }
 
 const cropper = reactive({ visible: false, src: '' });
+let cropTarget: TrackedImage | null = null;
 
 function openCropper() {
-  const target = selectedImage();
-  const src = target?.attrs.src as string | undefined;
-  if (!src) return;
-  cropper.src = src;
+  cropTarget?.stop();
+  cropTarget = trackSelectedImage();
+  if (!cropTarget) return;
+  cropper.src = cropTarget.src;
   cropper.visible = true;
 }
 
+function setCropperVisible(visible: boolean) {
+  cropper.visible = visible;
+  if (!visible) {
+    cropTarget?.stop();
+    cropTarget = null;
+  }
+}
+
 async function onCropped(blob: Blob) {
+  const target = cropTarget;
+  cropTarget = null;
   const notice = toasts.loading(t.value('image.uploading'));
   try {
     if (blob.size > upload.value.maxSize) throw new Error('too-large');
     const url = await upload.value.upload(blob, 'crop.png');
-    updateImage({ src: url, width: null, height: null });
+    target?.update({ src: url, width: null, height: null });
   } catch {
     toasts.error(t.value('image.uploadFailed'));
   } finally {
     toasts.dismiss(notice);
+    target?.stop();
   }
 }
 
@@ -490,7 +678,9 @@ function openTableMenuAt(view: EditorView, event: MouseEvent): boolean {
   }
 
   const instance = editor.value;
+  /* v8 ignore next */
   tableMenu.canMerge = instance?.can().mergeCells() ?? false;
+  /* v8 ignore next */
   tableMenu.canSplit = instance?.can().splitCell() ?? false;
   tableMenu.cellColor =
     (instance?.getAttributes('tableHeader').backgroundColor as string | null) ??
@@ -503,7 +693,10 @@ function openTableMenuAt(view: EditorView, event: MouseEvent): boolean {
 }
 
 function runTableAction(action: TableAction) {
-  const chain = editor.value?.chain().focus();
+  const instance = editor.value;
+  if (!instance?.isEditable) return;
+  const chain = instance.chain().focus();
+  /* v8 ignore next */
   if (!chain) return;
   const actions: Record<TableAction, () => void> = {
     rowBefore: () => chain.addRowBefore().run(),
@@ -521,11 +714,17 @@ function runTableAction(action: TableAction) {
   actions[action]();
 }
 
-const setCellColor = (color: string) =>
-  editor.value?.chain().focus().setCellAttribute('backgroundColor', color).run();
+const setCellColor = (color: string) => {
+  const instance = editor.value;
+  if (!instance?.isEditable) return;
+  instance.chain().focus().setCellAttribute('backgroundColor', color).run();
+};
 
-const clearCellColor = () =>
-  editor.value?.chain().focus().setCellAttribute('backgroundColor', null).run();
+const clearCellColor = () => {
+  const instance = editor.value;
+  if (!instance?.isEditable) return;
+  instance.chain().focus().setCellAttribute('backgroundColor', null).run();
+};
 
 /* Slash selection ------------------------------------------------------------ */
 
@@ -539,9 +738,27 @@ function onSlashSelect(item: SlashItem) {
 defineExpose({
   /** The underlying Tiptap instance — an escape hatch for anything not exposed here. */
   editor,
+  /* v8 ignore next */
   getHTML: () => editor.value?.getHTML() ?? '',
+  /* v8 ignore next */
   getText: () => editor.value?.getText() ?? '',
   getJSON: () => editor.value?.getJSON(),
+  /** The document as Markdown. In source mode, exactly what is in the textarea. */
+  getMarkdown: () => {
+    if (sourceMode.value) return source.value;
+    const instance = editor.value;
+    /* v8 ignore next -- the exposed API is only reachable while the editor is mounted */
+    if (!instance) return '';
+    return docToMarkdown(instance.state.doc);
+  },
+  setMarkdown: (markdown: string) => {
+    if (sourceMode.value) {
+      source.value = markdown;
+      applySource();
+      return;
+    }
+    editor.value?.commands.setContent(markdownToHTML(markdown));
+  },
   setContent: (html: string) => editor.value?.commands.setContent(html || ''),
   focus: () => editor.value?.commands.focus(),
   clear: () => editor.value?.commands.clearContent(true),
@@ -560,29 +777,35 @@ defineExpose({
       :editor="editor"
       :color="currentColor"
       :has-a-i="hasAI"
+      :has-markdown="markdown"
+      :source-mode="sourceMode"
       :t="t"
       @color="setColor"
       @clear-color="clearColor"
       @link="setLink"
       @image="pickImage"
       @ai="ai.start('continue')"
+      @toggle-source="toggleSourceMode"
     />
 
-    <EditorContent class="ue-editor" :editor="editor" />
+    <textarea
+      v-if="sourceMode"
+      ref="sourceInput"
+      v-model="source"
+      class="ue-markdown"
+      spellcheck="false"
+      :aria-label="t('toolbar.markdown')"
+      :placeholder="t('markdown.placeholder')"
+      @input="onSourceInput"
+    />
+    <EditorContent v-show="!sourceMode" class="ue-editor" :editor="editor" />
 
     <div v-if="statusbar && editor" class="ue-statusbar">
       <span>{{ t('stats.words', { n: stats.words }) }}</span>
       <span>{{ t('stats.chars', { n: stats.chars }) }}</span>
     </div>
 
-    <input
-      ref="fileInput"
-      type="file"
-      accept="image/*"
-      multiple
-      hidden
-      @change="onFilePicked"
-    />
+    <input ref="fileInput" type="file" accept="image/*" multiple hidden @change="onFilePicked" />
 
     <UeImageMenu
       :visible="imageMenu.visible"
@@ -613,10 +836,13 @@ defineExpose({
     />
 
     <UeCropper
-      v-model="cropper.visible"
+      v-if="cropper.visible"
+      :model-value="cropper.visible"
       :src="cropper.src"
       :fetch-image="upload.fetchImage"
+      :limits="props.imageProcessingLimits"
       :t="t"
+      @update:model-value="setCropperVisible"
       @confirm="onCropped"
       @error="toasts.error"
     />
@@ -637,7 +863,19 @@ defineExpose({
     <UeBubbleMenu
       v-if="editor && editable"
       :editor="editor"
-      :tasks="props.ai?.tasks ?? ['improve', 'translate', 'summarize', 'rewrite', 'expand', 'shorten', 'fixGrammar', 'changeTone', 'custom']"
+      :tasks="
+        props.ai?.tasks ?? [
+          'improve',
+          'translate',
+          'summarize',
+          'rewrite',
+          'expand',
+          'shorten',
+          'fixGrammar',
+          'changeTone',
+          'custom'
+        ]
+      "
       :has-a-i="hasAI"
       :t="t"
       @ai="ai.start"

@@ -52,6 +52,17 @@ describe('createAnthropicProvider', () => {
     expect(await collect(provider.stream(request, signal()))).toEqual(['a', 'b']);
   });
 
+  it.each([
+    [{ message: 'overloaded' }, 'ai-stream-error: overloaded'],
+    [undefined, 'ai-stream-error: unknown']
+  ])('throws when Anthropic sends a stream error', async (error, expected) => {
+    const fetch = () =>
+      Promise.resolve(sseResponse(`data: ${JSON.stringify({ type: 'error', error })}\n\n`));
+    const provider = createAnthropicProvider({ fetch });
+
+    await expect(collect(provider.stream(request, signal()))).rejects.toThrow(expected);
+  });
+
   it('sends key and version headers, opting into browser access only when asked', async () => {
     let captured: { url: string; init: RequestInit } | undefined;
     const fetch = ((url: string, init: RequestInit) => {
@@ -90,6 +101,32 @@ describe('createAnthropicProvider', () => {
     expect(headers['anthropic-dangerous-direct-browser-access']).toBeUndefined();
   });
 
+  it('omits temperature by default for models that reject sampling parameters', async () => {
+    let body: Record<string, unknown> = {};
+    const fetch = ((_url: string, init: RequestInit) => {
+      body = JSON.parse(init.body as string) as Record<string, unknown>;
+      return Promise.resolve(sseResponse(STOP));
+    }) as unknown as typeof globalThis.fetch;
+    const provider = createAnthropicProvider({ fetch });
+
+    await collect(provider.stream(request, signal()));
+
+    expect(body).not.toHaveProperty('temperature');
+  });
+
+  it('sends an explicitly configured temperature', async () => {
+    let body: Record<string, unknown> = {};
+    const fetch = ((_url: string, init: RequestInit) => {
+      body = JSON.parse(init.body as string) as Record<string, unknown>;
+      return Promise.resolve(sseResponse(STOP));
+    }) as unknown as typeof globalThis.fetch;
+    const provider = createAnthropicProvider({ fetch, temperature: 0.2 });
+
+    await collect(provider.stream(request, signal()));
+
+    expect(body.temperature).toBe(0.2);
+  });
+
   it('throws on a non-ok response', async () => {
     const fetch = () =>
       Promise.resolve({
@@ -101,5 +138,14 @@ describe('createAnthropicProvider', () => {
     await expect(collect(provider.stream(request, signal()))).rejects.toThrow(
       'ai-request-failed: 529'
     );
+  });
+
+  it('skips a text_delta that carries an empty string', async () => {
+    // Anthropic opens a text block with an empty delta. Yielding it would push an
+    // empty chunk at every consumer for no content.
+    const fetch = () => Promise.resolve(sseResponse(textDelta('') + textDelta('Hello') + STOP));
+    const provider = createAnthropicProvider({ fetch });
+
+    expect(await collect(provider.stream(request, signal()))).toEqual(['Hello']);
   });
 });

@@ -2,12 +2,19 @@ import {
   CodeBlockLowlight,
   type CodeBlockLowlightOptions
 } from '@tiptap/extension-code-block-lowlight';
+import type { Editor } from '@tiptap/core';
+import type { createLowlight } from 'lowlight';
 import { isBrowser } from '../utils/env';
 import { createTranslator, type LocaleName, type Messages, type Translator } from '../i18n';
+import { ULTRA_EDITOR_OPTIONS_META } from './runtime-options';
+
+/** Structural type for a lowlight instance, without importing the module for it. */
+type LowlightRegistry = ReturnType<typeof createLowlight>;
 
 export interface UltraCodeBlockOptions extends CodeBlockLowlightOptions {
   locale: LocaleName;
   messages: Partial<Messages>;
+  translator?: () => Translator;
 }
 
 const ICON = {
@@ -65,6 +72,57 @@ const HIDDEN_LANGUAGES = new Set(['plaintext', 'php-template', 'python-repl']);
 
 const labelOf = (id: string) => LANGUAGE_LABELS[id] ?? id;
 
+const CODE_BLOCK_NAME = 'codeBlock';
+
+/**
+ * Repaint every code block in the document.
+ *
+ * The lowlight plugin caches its decorations and only recomputes them when a
+ * transaction changes the document, so a grammar registered after the editor was
+ * built leaves the blocks already on screen unhighlighted. Re-applying each
+ * block's own attributes is the smallest transaction that forces a recompute: it
+ * changes nothing, keeps every node's size (so positions taken from the original
+ * document stay valid across the walk), stays out of the undo stack, and carries
+ * the runtime-options meta so a host does not read it as the author typing.
+ */
+export function refreshCodeHighlighting(editor: Editor): boolean {
+  const tr = editor.state.tr;
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== CODE_BLOCK_NAME) return;
+    tr.setNodeMarkup(pos, undefined, { ...node.attrs });
+    return false;
+  });
+  if (!tr.steps.length) return false;
+  editor.view.dispatch(
+    tr
+      .setMeta('addToHistory', false)
+      .setMeta(ULTRA_EDITOR_OPTIONS_META, true)
+      // StarterKit's trailing-node plugin appends a paragraph after any document
+      // change that leaves a code block last. It is a *document* change it reacts
+      // to, and this one is not: without the opt-out, merely registering a grammar
+      // would grow the document behind the host's back.
+      .setMeta('skipTrailingNode', true)
+  );
+  return true;
+}
+
+/**
+ * Register lowlight's common language set into an existing instance, on demand.
+ *
+ * Those grammars are ~300 KB of parsers, which is why neither the lean core entry
+ * nor the Vue component bundles them: an app that never renders a code block
+ * should not pay for 37 syntax highlighters. Fetching them the first time an
+ * editor is up keeps that promise while still giving the language picker a real
+ * catalogue and code an actual highlight.
+ *
+ * Follow it with `refreshCodeHighlighting` to repaint blocks that were already on
+ * screen when the grammars landed.
+ */
+export async function loadCommonLanguages(lowlight: LowlightRegistry): Promise<void> {
+  const { default: common } = await import('./common-languages');
+  lowlight.register(common);
+}
+
 /**
  * Code block with a language picker and a copy button.
  *
@@ -80,20 +138,26 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
     return {
       ...(this.parent?.() as CodeBlockLowlightOptions),
       locale: 'zh-CN' as LocaleName,
-      messages: {}
+      messages: {},
+      translator: undefined
     };
   },
 
   addNodeView() {
     if (!isBrowser()) return null;
 
-    const t: Translator = createTranslator(this.options.locale, this.options.messages);
+    const fallback: Translator = createTranslator(this.options.locale, this.options.messages);
+    const t = () => this.options.translator?.() ?? fallback;
     const prefix = this.options.languageClassPrefix;
     const lowlight = this.options.lowlight as { listLanguages: () => string[] };
-    const languages = lowlight
-      .listLanguages()
-      .filter((id) => !HIDDEN_LANGUAGES.has(id))
-      .sort((a, b) => labelOf(a).localeCompare(labelOf(b)));
+    // Read per open, not once at construction: the default language set is
+    // fetched after the editor exists, and a catalogue frozen here would stay
+    // empty for the lifetime of the document.
+    const listLanguages = () =>
+      lowlight
+        .listLanguages()
+        .filter((id) => !HIDDEN_LANGUAGES.has(id))
+        .sort((a, b) => labelOf(a).localeCompare(labelOf(b)));
 
     return ({ editor, node, getPos }) => {
       const dom = document.createElement('div');
@@ -109,10 +173,15 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
 
       // The closed-over node and position go stale as soon as anything above this
       // block changes — resolve both on every action instead.
+      // Tiptap always hands a node view a `getPos` function, and a live position
+      // always resolves back to this node — the two fallbacks below only cover a
+      // torn-down view, which already leaves through the `pos == null` arm.
       const current = () => {
+        /* v8 ignore next */
         const pos = typeof getPos === 'function' ? getPos() : null;
         if (pos == null) return null;
         const found = editor.state.doc.nodeAt(pos);
+        /* v8 ignore next */
         return found && found.type.name === node.type.name ? { pos, node: found } : null;
       };
 
@@ -125,7 +194,7 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
       trigger.className = 'ue-codeblock__lang';
       trigger.setAttribute('aria-haspopup', 'listbox');
       trigger.setAttribute('aria-expanded', 'false');
-      trigger.title = t('codeBlock.language');
+      trigger.title = t()('codeBlock.language');
 
       // A native <select> renders an OS popup: it takes the control's own colour
       // into its options, ignores the editor's surface, and drops a 35-row list
@@ -133,7 +202,7 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
       const list = document.createElement('div');
       list.className = 'ue-menu ue-codeblock__langs';
       list.setAttribute('role', 'listbox');
-      list.setAttribute('aria-label', t('codeBlock.language'));
+      list.setAttribute('aria-label', t()('codeBlock.language'));
 
       const options: Array<{ id: string | null; item: HTMLButtonElement }> = [];
 
@@ -155,8 +224,21 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
         options.push({ id, item });
       };
 
-      addOption(null, t('codeBlock.plain'));
-      languages.forEach((id) => addOption(id, labelOf(id)));
+      // Built on first open rather than with the node view. Eagerly, a document
+      // with fifty code blocks would create fifty menus' worth of buttons nobody
+      // asked to see; lazily, the signature check also picks up grammars that
+      // were registered after this block was drawn.
+      let built = '';
+      const buildOptions = () => {
+        const ids = listLanguages();
+        const signature = ids.join(',');
+        if (signature === built && options.length) return;
+        built = signature;
+        options.length = 0;
+        list.replaceChildren();
+        addOption(null, t()('codeBlock.plain'));
+        ids.forEach((id) => addOption(id, labelOf(id)));
+      };
 
       const syncOptions = () => {
         options.forEach(({ id, item }) => {
@@ -204,8 +286,12 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
       };
 
       function openList() {
+        // The trigger is the only caller and it already picks between open and
+        // close, so this never sees an open list.
+        /* v8 ignore next */
         if (open) return;
         open = true;
+        buildOptions();
         syncOptions();
         document.body.appendChild(list);
         place();
@@ -261,7 +347,7 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
 
       const syncLanguage = (next: string | null) => {
         language = next;
-        trigger.textContent = next ? labelOf(next) : t('codeBlock.plain');
+        trigger.textContent = next ? labelOf(next) : t()('codeBlock.plain');
         contentDOM.className = next ? `${prefix}${next}` : '';
         if (open) syncOptions();
       };
@@ -275,7 +361,7 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
       const copyLabel = document.createElement('span');
       const renderCopy = (copied: boolean) => {
         copy.innerHTML = copied ? ICON.copied : ICON.copy;
-        copyLabel.textContent = copied ? t('codeBlock.copied') : t('codeBlock.copy');
+        copyLabel.textContent = copied ? t()('codeBlock.copied') : t()('codeBlock.copy');
         copy.appendChild(copyLabel);
         copy.classList.toggle('is-copied', copied);
       };
@@ -313,6 +399,29 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
       };
       editor.on('update', syncEditable);
 
+      const syncRuntimeOptions = ({
+        transaction
+      }: {
+        transaction: import('@tiptap/pm/state').Transaction;
+      }) => {
+        if (!transaction.getMeta(ULTRA_EDITOR_OPTIONS_META)) return;
+        trigger.title = t()('codeBlock.language');
+        list.setAttribute('aria-label', t()('codeBlock.language'));
+        // The same meta rides a locale change and a grammar registration, and
+        // both invalidate the menu: one changes the "plain text" label, the other
+        // changes the catalogue. Discard it either way, and rebuild in place when
+        // the user is looking at it — the list's height moves, so re-place it too.
+        built = '';
+        if (open) {
+          buildOptions();
+          syncOptions();
+          place();
+        }
+        syncLanguage(language);
+        renderCopy(copy.classList.contains('is-copied'));
+      };
+      editor.on('transaction', syncRuntimeOptions);
+
       syncLanguage(language);
       syncEditable();
 
@@ -320,6 +429,10 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
         dom,
         contentDOM,
         update: (updatedNode) => {
+          // ProseMirror only calls a node view's `update` when the incoming node has
+          // the same type (CustomNodeViewDesc gates on `this.node.type == node.type`
+          // unless the spec opts into `multiType`, which this one does not).
+          /* v8 ignore next */
           if (updatedNode.type !== node.type) return false;
           syncLanguage((updatedNode.attrs.language as string | null) ?? null);
           return true;
@@ -334,6 +447,7 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
           closeList();
           clearTimeout(copiedTimer);
           editor.off('update', syncEditable);
+          editor.off('transaction', syncRuntimeOptions);
         }
       };
     };

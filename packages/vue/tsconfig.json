@@ -4,6 +4,7 @@
     "noEmit": true,
     "types": ["node"],
     "paths": {
+      "@ultra-editor/core/lean": ["../core/src/lean.ts"],
       "@ultra-editor/core": ["../core/src/index.ts"]
     }
   },

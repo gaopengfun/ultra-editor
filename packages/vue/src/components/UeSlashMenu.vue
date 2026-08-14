@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import UeIcon from './UeIcon.vue';
-import type { SlashItem, Translator } from '@ultra-editor/core';
+import type { SlashItem, Translator } from '@ultra-editor/core/lean';
 
 /**
  * `items` arrives already grouped (see `orderSlashItems` in UltraEditor) and this

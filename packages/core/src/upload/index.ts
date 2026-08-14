@@ -9,6 +9,9 @@ export type UploadHandler = (file: Blob, filename?: string) => Promise<string>;
 export type ImageFetcher = (src: string) => Promise<Blob>;
 
 export const DEFAULT_MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+export const DEFAULT_UPLOAD_CONCURRENCY = 3;
+
+export type OptionSource<T> = T | (() => T);
 
 export interface UploadOptions {
   /** Upload a blob, return its public URL. Defaults to an in-memory data URL. */
@@ -16,7 +19,9 @@ export interface UploadOptions {
   /** Fetch an image back as a blob. Defaults to a same-origin `fetch`. */
   fetchImage?: ImageFetcher;
   /** Reject anything larger, in bytes. Default 5 MB. */
-  maxSize?: number;
+  maxSize?: OptionSource<number>;
+  /** Maximum number of image uploads running at once. Default 3. */
+  concurrency?: OptionSource<number>;
   /** Accepted MIME prefixes. Default `['image/']`. */
   accept?: string[];
 }
@@ -53,16 +58,31 @@ export interface ResolvedUpload {
   upload: UploadHandler;
   fetchImage: ImageFetcher;
   maxSize: number;
+  concurrency: number;
   accept: string[];
 }
 
 export function resolveUploadOptions(options: UploadOptions = {}): ResolvedUpload {
+  const maxSize = options.maxSize;
+  const concurrency = options.concurrency;
   return {
     upload: options.upload ?? dataUrlUpload,
     fetchImage: options.fetchImage ?? defaultImageFetcher,
-    maxSize: options.maxSize ?? DEFAULT_MAX_IMAGE_SIZE,
+    maxSize:
+      maxSize === undefined
+        ? DEFAULT_MAX_IMAGE_SIZE
+        : typeof maxSize === 'function'
+          ? maxSize()
+          : maxSize,
+    concurrency: resolveUploadConcurrency(concurrency),
     accept: options.accept ?? ['image/']
   };
+}
+
+export function resolveUploadConcurrency(source?: OptionSource<number>): number {
+  const value = typeof source === 'function' ? source() : source;
+  if (value === undefined || !Number.isFinite(value)) return DEFAULT_UPLOAD_CONCURRENCY;
+  return Math.max(1, Math.floor(value));
 }
 
 export function isAcceptedFile(file: File | Blob, accept: string[]): boolean {

@@ -2,12 +2,14 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import UeIcon from './UeIcon.vue';
 import type { AIController } from '../composables/useAi';
-import type { MessageKey, Translator } from '@ultra-editor/core';
+import type { MessageKey, Translator } from '@ultra-editor/core/lean';
 
 const props = defineProps<{ controller: AIController; t: Translator }>();
 
 const input = ref<HTMLInputElement>();
+const panel = ref<HTMLElement>();
 const state = computed(() => props.controller.state);
+let lastFocused: HTMLElement | null = null;
 
 // Escape dismisses the panel from any phase. The prompt input owns it while
 // shown (it also stops the keystroke reaching the document), so only the
@@ -20,13 +22,26 @@ const onKey = (event: KeyboardEvent) => {
 
 watch(
   () => state.value.open,
-  (open) => {
-    if (open) window.addEventListener('keydown', onKey, true);
-    else window.removeEventListener('keydown', onKey, true);
+  async (open) => {
+    if (open) {
+      lastFocused = document.activeElement as HTMLElement | null;
+      window.addEventListener('keydown', onKey, true);
+      await nextTick();
+      if (state.value.phase !== 'prompt') {
+        panel.value!.querySelector<HTMLElement>('button:not([disabled])')!.focus();
+      }
+    } else {
+      window.removeEventListener('keydown', onKey, true);
+      lastFocused?.focus?.();
+      lastFocused = null;
+    }
   }
 );
 
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKey, true);
+  lastFocused?.focus?.();
+});
 
 const TASK_LABEL: Record<string, MessageKey> = {
   continue: 'ai.continue',
@@ -62,9 +77,11 @@ watch(
   <Teleport to="body">
     <div
       v-if="state.open"
+      ref="panel"
       class="ue-ai-panel"
       :style="{ left: state.anchor.x + 'px', top: state.anchor.y + 'px' }"
       role="dialog"
+      tabindex="-1"
       :aria-label="title"
     >
       <header class="ue-ai-panel__head">

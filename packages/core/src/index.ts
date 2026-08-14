@@ -1,4 +1,4 @@
-export const VERSION = '1.0.0';
+export { VERSION } from './version';
 
 /**
  * Tiptap building blocks, re-exported.
@@ -20,6 +20,7 @@ export * from './kit';
 export * from './upload';
 export * from './i18n';
 export * from './ai';
+export * from './markdown';
 export { contrastText } from './utils/color';
 export { isSafeImageUrl, isSafeLinkUrl } from './utils/url';
 export { isBrowser } from './utils/env';
@@ -28,5 +29,7 @@ export {
   rotateImage,
   loadImage,
   canvasToBlob,
-  type ImageTransform
+  DEFAULT_IMAGE_PROCESSING_LIMITS,
+  type ImageTransform,
+  type ImageProcessingLimits
 } from './utils/image';

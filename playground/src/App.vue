@@ -1,7 +1,40 @@
 <script setup lang="ts">
-import { computed, ref, watchEffect } from 'vue';
-import { UltraEditor, type AIProvider, type LocaleName } from '@ultra-editor/vue';
+import { computed, defineAsyncComponent, defineComponent, h, ref, watchEffect } from 'vue';
+import type { AIProvider, LocaleName } from '@ultra-editor/vue';
 import { createOpenAIProvider } from '@ultra-editor/core/providers/openai';
+
+const EditorLoading = defineComponent({
+  name: 'EditorLoading',
+  setup: () => () =>
+    h('div', { class: 'pg-editor-state', role: 'status', 'aria-label': '正在加载编辑器' }, [
+      h('span', { class: 'pg-editor-spinner', 'aria-hidden': 'true' })
+    ])
+});
+
+const EditorLoadError = defineComponent({
+  name: 'EditorLoadError',
+  setup: () => () =>
+    h('div', { class: 'pg-editor-state pg-editor-state--error', role: 'alert' }, [
+      h('span', '编辑器加载失败'),
+      h(
+        'button',
+        { type: 'button', class: 'pg-editor-retry', onClick: () => window.location.reload() },
+        '重试'
+      )
+    ])
+});
+
+const UltraEditor = defineAsyncComponent({
+  loader: () => import('@ultra-editor/vue').then((module) => module.UltraEditor),
+  loadingComponent: EditorLoading,
+  errorComponent: EditorLoadError,
+  delay: 0,
+  timeout: 15_000,
+  onError(_error, retry, fail, attempts) {
+    if (attempts < 2) retry();
+    else fail();
+  }
+});
 
 const html = ref(`
 <h2>ultra-editor</h2>

@@ -21,6 +21,8 @@ interface StreamMeta {
 
 const aiStreamKey = new PluginKey<AIStreamRange | null>('ueAiStream');
 
+export const AI_STREAM_TRANSACTION_META = 'ueAiStreamTransaction';
+
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     aiStream: {
@@ -45,6 +47,11 @@ export function isAIStreaming(state: EditorState): boolean {
   return aiStreamRange(state) !== null;
 }
 
+/** Whether a transaction only renders or rolls back a provisional AI result. */
+export function isAIStreamTransaction(transaction: Transaction): boolean {
+  return transaction.getMeta(AI_STREAM_TRANSACTION_META) === true;
+}
+
 /**
  * Turn plain model output into block nodes. Models emit prose with blank lines
  * between paragraphs and single newlines inside them, so that's what we honour —
@@ -66,7 +73,8 @@ function textToNodes(text: string, schema: EditorState['schema']): ProseMirrorNo
 }
 
 /** Writes bypass history: the whole generation lands as one step on accept. */
-const silent = (tr: Transaction) => tr.setMeta('addToHistory', false);
+const silent = (tr: Transaction) =>
+  tr.setMeta('addToHistory', false).setMeta(AI_STREAM_TRANSACTION_META, true);
 
 /**
  * What the streaming region should contain to be back where it started: nothing,
