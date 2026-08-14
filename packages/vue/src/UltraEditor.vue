@@ -135,6 +135,11 @@ function toggleSourceMode() {
   const instance = editor.value;
   /* v8 ignore next */
   if (!instance) return;
+  // A debounced apply describes markdown that is about to stop being the source of
+  // truth. Left running, it lands after the author is back in the document and
+  // overwrites everything they have typed since — the exit path applies the
+  // textarea itself, so the pending timer has nothing left to contribute.
+  clearTimeout(sourceTimer);
   if (sourceMode.value) {
     applySource();
     sourceMode.value = false;

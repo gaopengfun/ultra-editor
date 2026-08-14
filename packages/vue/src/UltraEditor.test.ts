@@ -551,6 +551,22 @@ describe('markdown source mode', () => {
     expect(editor.getHTML()).toBe('<h1>边写边同步</h1><p></p>');
   });
 
+  it('drops the pending apply when the author leaves source mode', async () => {
+    vi.useFakeTimers();
+    await mountEditor({ modelValue: '<p>正文</p>' });
+    await sourceToggle().trigger('click');
+
+    await textarea().setValue('# 源码写的');
+    // Leave while the debounce is still pending, then carry on typing in the
+    // document. The timer the textarea scheduled must not come back and revert it.
+    await vi.advanceTimersByTimeAsync(100);
+    await exitButton().trigger('click');
+    editor.commands.setContent('<p>退出后新写的</p>');
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(editor.getHTML()).toBe('<p>退出后新写的</p>');
+  });
+
   it('shows only the way out while the textarea is open', async () => {
     await mountEditor();
     await sourceToggle().trigger('click');
