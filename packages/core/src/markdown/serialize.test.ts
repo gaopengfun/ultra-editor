@@ -45,6 +45,30 @@ describe('document to markdown', () => {
     expect(toMarkdown('<p><u>下划线</u></p>')).toBe('下划线');
   });
 
+  it('escapes a literal tilde so it cannot come back as syntax', () => {
+    // Unescaped, `~~x~~` returns as a strikethrough nobody applied — and a
+    // paragraph of `~~~` opens a fence that swallows the rest of the document.
+    expect(toMarkdown('<p>~~开心~~啦</p>')).toBe('\\~\\~开心\\~\\~啦');
+    expect(markdownToHTML(toMarkdown('<p>~~开心~~啦</p>'))).toBe('<p>~~开心~~啦</p>');
+    expect(markdownToHTML(toMarkdown('<p>~~~</p><p>后面的正文</p>'))).toBe(
+      '<p>~~~</p><p>后面的正文</p>'
+    );
+  });
+
+  it('still writes a real strikethrough, tildes in its text and all', () => {
+    expect(toMarkdown('<p><s>删</s></p>')).toBe('~~删~~');
+    expect(markdownToHTML(toMarkdown('<p><s>a~b</s></p>'))).toBe('<p><s>a~b</s></p>');
+  });
+
+  it('escapes a leading number by its punctuation, not its digits', () => {
+    // `\1.` is not a valid escape — Markdown only escapes punctuation — so the
+    // backslash comes back as text and the author sees one they never typed.
+    expect(toMarkdown('<p>1. 正文</p>')).toBe('1\\. 正文');
+    expect(toMarkdown('<p>2) 第二</p>')).toBe('2\\) 第二');
+    expect(markdownToHTML(toMarkdown('<p>1. 正文</p>'))).toBe('<p>1. 正文</p>');
+    expect(markdownToHTML(toMarkdown('<p>2024. 全年营收</p>'))).toBe('<p>2024. 全年营收</p>');
+  });
+
   it('writes a code span that itself contains backticks', () => {
     expect(toMarkdown('<p><code>a`b</code></p>')).toBe('``a`b``');
     // A backtick at the very edge needs padding, or the fences run together.
@@ -150,7 +174,7 @@ describe('document to markdown', () => {
     expect(toMarkdown('<p>2 * 3 * 4</p>')).toBe('2 \\* 3 \\* 4');
     expect(toMarkdown('<p># 不是标题</p>')).toBe('\\# 不是标题');
     expect(toMarkdown('<p>- 不是列表</p>')).toBe('\\- 不是列表');
-    expect(toMarkdown('<p>1. 不是有序列表</p>')).toBe('\\1. 不是有序列表');
+    expect(toMarkdown('<p>1. 不是有序列表</p>')).toBe('1\\. 不是有序列表');
   });
 
   it('writes a hard break as two trailing spaces', () => {

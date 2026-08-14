@@ -13,21 +13,33 @@ import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
  * Losing the layout is acceptable; losing the words is not.
  */
 
-/** Characters that would otherwise be read back as syntax. */
-const INLINE_ESCAPE = /([\\`*_[\]])/g;
+/**
+ * Characters that would otherwise be read back as syntax.
+ *
+ * `~` earns its place twice over: a bare `~~x~~` comes back as a strikethrough
+ * nobody applied, and a paragraph of `~~~` opens a fenced code block that eats
+ * the rest of the document on the way in.
+ */
+const INLINE_ESCAPE = /([\\`*_[\]~])/g;
 
 /** Markdown that only bites at the start of a line. */
-const LEADING_ESCAPE = /^(\s*)([#>+\-|]|\d+[.)])/;
+const LEADING_SYMBOL = /^(\s*)([#>+\-|])/;
+const LEADING_NUMBER = /^(\s*)(\d+)([.)])/;
 
 function escapeInline(text: string): string {
   return text.replace(INLINE_ESCAPE, '\\$1');
 }
 
+/**
+ * Neutralise a marker that only carries meaning at the start of a line.
+ *
+ * For a numbered marker the backslash goes before the *punctuation*: `\1.` is not
+ * a valid escape — Markdown only lets punctuation be escaped — so a reader hands
+ * the backslash back as literal text and the author sees one they never typed.
+ * `1\.` is the form that survives the trip.
+ */
 function escapeLeading(line: string): string {
-  return line.replace(
-    LEADING_ESCAPE,
-    (_match, space: string, token: string) => `${space}\\${token}`
-  );
+  return line.replace(LEADING_SYMBOL, '$1\\$2').replace(LEADING_NUMBER, '$1$2\\$3');
 }
 
 /**
