@@ -11,7 +11,7 @@ the product does and `docs/` for the public API.
 | `packages/core`   | `@ultra-editor/core` — framework-agnostic: Tiptap extensions, the AI engine, **all** the CSS. No Vue, no React.     |
 | `packages/vue`    | `@ultra-editor/vue` — Vue 3 chrome: `UltraEditor.vue`, floating menus, composables. Zero third-party UI deps.       |
 | `playground`      | Local dev app. Ships a mock `AIProvider` so the whole AI surface runs with no key and no network.                   |
-| `docs/`           | Plain markdown, **not** a workspace package — `pnpm docs:dev` / `docs:build` will fail until a docs app exists.     |
+| `docs/`           | Plain markdown, **not** a workspace package. There is no docs site and no docs script — read the files directly.     |
 
 pnpm workspace, Node ≥ 20.19, pnpm 11. `@ultra-editor/core` and `@ultra-editor/vue` are
 [changesets `fixed`](.changeset/config.json) — they always version and publish together.

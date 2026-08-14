@@ -2,6 +2,8 @@
 
 **AI Native 富文本编辑器，Vue 3 组件。基于 Tiptap 构建。**
 
+> **⚠️ 尚未发布到 npm。** 下面的命令要等首次发布之后才可用。
+
 ```bash
 pnpm add @ultra-editor/vue
 ```
@@ -28,7 +30,7 @@ const html = ref('<p>开始写点什么…</p>');
 <UltraEditor v-model="html" :ai="{ provider }" :upload="myUploadHandler" />
 ```
 
-📖 **完整文档：** https://github.com/penggao4/ultra-editor
+📖 **完整文档：** https://github.com/gaopengfun/ultra-editor
 
 ## License
 

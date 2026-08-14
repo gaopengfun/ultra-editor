@@ -7,9 +7,8 @@
 斜杠命令 · 选区 AI 气泡菜单 · 文档内流式生成 · 幽灵文本补全
 图片编辑（旋转 / 裁切 / 8 锚点缩放 / 对齐 / 图注）· 分栏卡片 · 可拖拽行列的表格
 
-[![CI](https://github.com/penggao4/ultra-editor/actions/workflows/ci.yml/badge.svg)](https://github.com/penggao4/ultra-editor/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@ultra-editor/vue.svg)](https://www.npmjs.com/package/@ultra-editor/vue)
-[![license](https://img.shields.io/npm/l/@ultra-editor/vue.svg)](./LICENSE)
+[![CI](https://github.com/gaopengfun/ultra-editor/actions/workflows/ci.yml/badge.svg)](https://github.com/gaopengfun/ultra-editor/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 </div>
 
@@ -22,6 +21,9 @@
 同时它不绑定任何 AI 厂商、不绑定任何 UI 框架、不绑定任何上传后端 —— 这三件事都是你注入的。
 
 ## 安装
+
+> **⚠️ 尚未发布到 npm。** 下面的命令要等首次发布之后才可用。现在想试，请 clone 本仓库后跑
+> `pnpm install && pnpm dev`，见 [本地开发](#本地开发)。
 
 ```bash
 pnpm add @ultra-editor/vue
