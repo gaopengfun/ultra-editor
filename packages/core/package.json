@@ -1,6 +1,6 @@
 {
   "name": "@ultra-editor/core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "Framework-agnostic Tiptap extensions and AI engine for ultra-editor",
   "keywords": [
