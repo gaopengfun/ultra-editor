@@ -18,6 +18,7 @@
 | `uploadConcurrency`       | `number`             | `3`                   | 同时上传的图片数量，至少为 1                         |
 | `imageProcessingLimits`   | `ImageProcessingLimits` | 见下方默认值       | 旋转 / 裁切时的源图与 Canvas 资源上限                |
 | `lowlight`                | `LowlightInstance`    | 挂载后异步加载 common | 自定义代码高亮语言集，传了就完全以它为准             |
+| `markdown`                | `boolean`            | `true`                | Markdown 源码模式按钮 + 粘贴自动识别                 |
 | `ai`                      | `UltraEditorAIProps` | —                     | AI 配置，不传则无任何 AI 界面                        |
 | `toolbar`                 | `boolean`            | `true`                | 是否显示工具栏                                       |
 | `statusbar`               | `boolean`            | `true`                | 是否显示字数统计栏                                   |
@@ -62,6 +63,8 @@ const editorRef = ref<InstanceType<typeof UltraEditor>>();
 editorRef.value.getHTML(); // string
 editorRef.value.getText(); // string
 editorRef.value.getJSON(); // JSONContent
+editorRef.value.getMarkdown(); // string；源码模式下就是 textarea 里的内容
+editorRef.value.setMarkdown(md);
 editorRef.value.setContent(html);
 editorRef.value.focus();
 editorRef.value.clear();

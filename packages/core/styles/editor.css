@@ -123,6 +123,32 @@
   background: var(--ue-border);
 }
 
+/* Markdown source mode ----------------------------------------------------- */
+
+/* Sized like the editing surface it stands in for, so toggling does not make the
+   frame jump. Monospaced, because the whole point is seeing the syntax. */
+.ultra-editor .ue-markdown {
+  flex: 1;
+  min-height: var(--ue-min-height);
+  max-height: var(--ue-max-height);
+  padding: 16px 20px;
+  overflow-y: auto;
+  font-family: var(--ue-font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  tab-size: 2;
+  color: var(--ue-text);
+  background: var(--ue-surface);
+  border: none;
+  outline: none;
+  resize: none;
+  white-space: pre-wrap;
+}
+
+.ultra-editor .ue-markdown::placeholder {
+  color: var(--ue-text-placeholder);
+}
+
 /* Status bar -------------------------------------------------------------- */
 
 .ue-statusbar {

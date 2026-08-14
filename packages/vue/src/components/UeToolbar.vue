@@ -9,6 +9,10 @@ const props = defineProps<{
   editor: Editor;
   color: string | null;
   hasAI: boolean;
+  /** Whether to offer the Markdown source toggle at all. */
+  hasMarkdown: boolean;
+  /** In source mode the document is a textarea, so formatting controls make no sense. */
+  sourceMode: boolean;
   t: Translator;
 }>();
 
@@ -18,6 +22,7 @@ const emit = defineEmits<{
   (e: 'link'): void;
   (e: 'image'): void;
   (e: 'ai'): void;
+  (e: 'toggle-source'): void;
 }>();
 
 const MARKS = [
@@ -70,140 +75,169 @@ const insertTable = ({ rows, cols }: { rows: number; cols: number }) =>
 
 <template>
   <div class="ue-toolbar" role="toolbar">
+    <!-- Source mode replaces the document with a textarea; every control below
+         acts on a document that is not on screen, so only the way out is shown. -->
     <button
-      v-for="level in [1, 2, 3] as const"
-      :key="level"
+      v-if="sourceMode"
       type="button"
-      class="ue-tb-btn"
-      :class="{ 'is-active': editor.isActive('heading', { level }) }"
-      :title="t(`toolbar.h${level}` as 'toolbar.h1')"
-      @click="editor.chain().focus().toggleHeading({ level }).run()"
+      class="ue-tb-btn is-active"
+      :title="t('markdown.exit')"
+      :aria-pressed="true"
+      @click="emit('toggle-source')"
     >
-      H{{ level }}
+      <UeIcon name="markdown" />
+      {{ t('markdown.exit') }}
     </button>
 
-    <span class="ue-tb-divider" />
+    <template v-if="!sourceMode">
+      <button
+        v-for="level in [1, 2, 3] as const"
+        :key="level"
+        type="button"
+        class="ue-tb-btn"
+        :class="{ 'is-active': editor.isActive('heading', { level }) }"
+        :title="t(`toolbar.h${level}` as 'toolbar.h1')"
+        @click="editor.chain().focus().toggleHeading({ level }).run()"
+      >
+        H{{ level }}
+      </button>
 
-    <button
-      v-for="mark in MARKS"
-      :key="mark.name"
-      type="button"
-      class="ue-tb-btn"
-      :class="{ 'is-active': editor.isActive(mark.name) }"
-      :title="t(mark.label)"
-      @click="toggleMark(mark.name)"
-    >
-      <UeIcon :name="mark.icon" />
-    </button>
-
-    <UeColorPicker
-      :model-value="color"
-      :title="t('toolbar.color')"
-      :clear-label="t('table.clearColor')"
-      @update:model-value="emit('color', $event)"
-      @clear="emit('clear-color')"
-    />
-
-    <span class="ue-tb-divider" />
-
-    <button
-      v-for="block in BLOCKS"
-      :key="block.name"
-      type="button"
-      class="ue-tb-btn"
-      :class="{ 'is-active': editor.isActive(block.name) }"
-      :title="t(block.label)"
-      @click="toggleBlock(block.name)"
-    >
-      <UeIcon :name="block.icon" />
-    </button>
-
-    <span class="ue-tb-divider" />
-
-    <button
-      type="button"
-      class="ue-tb-btn"
-      :class="{ 'is-active': editor.isActive('link') }"
-      :title="t('toolbar.link')"
-      @click="emit('link')"
-    >
-      <UeIcon name="link" />
-    </button>
-
-    <button type="button" class="ue-tb-btn" :title="t('toolbar.image')" @click="emit('image')">
-      <UeIcon name="image" />
-    </button>
-
-    <UeGridPicker
-      icon="columns"
-      :title="t('toolbar.columns')"
-      :cols="MAX_COLUMNS"
-      :disabled="editor.isActive('column') || editor.isActive('columnBlock')"
-      :hint="({ cols }) => t('columns.pick', { n: cols })"
-      @pick="insertColumns"
-    />
-
-    <UeGridPicker
-      icon="table"
-      :title="t('toolbar.table')"
-      :rows="6"
-      :cols="6"
-      :disabled="editor.isActive('table')"
-      :hint="({ rows, cols }) => t('table.pick', { rows, cols })"
-      @pick="insertTable"
-    />
-
-    <button
-      type="button"
-      class="ue-tb-btn"
-      :title="t('toolbar.hr')"
-      @click="editor.chain().focus().setHorizontalRule().run()"
-    >
-      <UeIcon name="hr" />
-    </button>
-
-    <button
-      type="button"
-      class="ue-tb-btn"
-      :title="t('toolbar.clear')"
-      @click="editor.chain().focus().unsetAllMarks().clearNodes().run()"
-    >
-      <UeIcon name="clear" />
-    </button>
-
-    <span class="ue-tb-divider" />
-
-    <button
-      type="button"
-      class="ue-tb-btn"
-      :title="t('toolbar.undo')"
-      :disabled="!editor.can().undo()"
-      @click="editor.chain().focus().undo().run()"
-    >
-      <UeIcon name="undo" />
-    </button>
-
-    <button
-      type="button"
-      class="ue-tb-btn"
-      :title="t('toolbar.redo')"
-      :disabled="!editor.can().redo()"
-      @click="editor.chain().focus().redo().run()"
-    >
-      <UeIcon name="redo" />
-    </button>
-
-    <template v-if="hasAI">
       <span class="ue-tb-divider" />
+
+      <button
+        v-for="mark in MARKS"
+        :key="mark.name"
+        type="button"
+        class="ue-tb-btn"
+        :class="{ 'is-active': editor.isActive(mark.name) }"
+        :title="t(mark.label)"
+        @click="toggleMark(mark.name)"
+      >
+        <UeIcon :name="mark.icon" />
+      </button>
+
+      <UeColorPicker
+        :model-value="color"
+        :title="t('toolbar.color')"
+        :clear-label="t('table.clearColor')"
+        @update:model-value="emit('color', $event)"
+        @clear="emit('clear-color')"
+      />
+
+      <span class="ue-tb-divider" />
+
+      <button
+        v-for="block in BLOCKS"
+        :key="block.name"
+        type="button"
+        class="ue-tb-btn"
+        :class="{ 'is-active': editor.isActive(block.name) }"
+        :title="t(block.label)"
+        @click="toggleBlock(block.name)"
+      >
+        <UeIcon :name="block.icon" />
+      </button>
+
+      <span class="ue-tb-divider" />
+
       <button
         type="button"
-        class="ue-tb-btn ue-tb-btn--ai"
-        :title="t('toolbar.ai')"
-        @click="emit('ai')"
+        class="ue-tb-btn"
+        :class="{ 'is-active': editor.isActive('link') }"
+        :title="t('toolbar.link')"
+        @click="emit('link')"
       >
-        <UeIcon name="ai" />
-        {{ t('toolbar.ai') }}
+        <UeIcon name="link" />
       </button>
+
+      <button type="button" class="ue-tb-btn" :title="t('toolbar.image')" @click="emit('image')">
+        <UeIcon name="image" />
+      </button>
+
+      <UeGridPicker
+        icon="columns"
+        :title="t('toolbar.columns')"
+        :cols="MAX_COLUMNS"
+        :disabled="editor.isActive('column') || editor.isActive('columnBlock')"
+        :hint="({ cols }) => t('columns.pick', { n: cols })"
+        @pick="insertColumns"
+      />
+
+      <UeGridPicker
+        icon="table"
+        :title="t('toolbar.table')"
+        :rows="6"
+        :cols="6"
+        :disabled="editor.isActive('table')"
+        :hint="({ rows, cols }) => t('table.pick', { rows, cols })"
+        @pick="insertTable"
+      />
+
+      <button
+        type="button"
+        class="ue-tb-btn"
+        :title="t('toolbar.hr')"
+        @click="editor.chain().focus().setHorizontalRule().run()"
+      >
+        <UeIcon name="hr" />
+      </button>
+
+      <button
+        type="button"
+        class="ue-tb-btn"
+        :title="t('toolbar.clear')"
+        @click="editor.chain().focus().unsetAllMarks().clearNodes().run()"
+      >
+        <UeIcon name="clear" />
+      </button>
+
+      <span class="ue-tb-divider" />
+
+      <button
+        type="button"
+        class="ue-tb-btn"
+        :title="t('toolbar.undo')"
+        :disabled="!editor.can().undo()"
+        @click="editor.chain().focus().undo().run()"
+      >
+        <UeIcon name="undo" />
+      </button>
+
+      <button
+        type="button"
+        class="ue-tb-btn"
+        :title="t('toolbar.redo')"
+        :disabled="!editor.can().redo()"
+        @click="editor.chain().focus().redo().run()"
+      >
+        <UeIcon name="redo" />
+      </button>
+
+      <template v-if="hasMarkdown">
+        <span class="ue-tb-divider" />
+        <button
+          type="button"
+          class="ue-tb-btn"
+          :title="t('toolbar.markdown')"
+          :aria-pressed="false"
+          @click="emit('toggle-source')"
+        >
+          <UeIcon name="markdown" />
+        </button>
+      </template>
+
+      <template v-if="hasAI">
+        <span class="ue-tb-divider" />
+        <button
+          type="button"
+          class="ue-tb-btn ue-tb-btn--ai"
+          :title="t('toolbar.ai')"
+          @click="emit('ai')"
+        >
+          <UeIcon name="ai" />
+          {{ t('toolbar.ai') }}
+        </button>
+      </template>
     </template>
   </div>
 </template>

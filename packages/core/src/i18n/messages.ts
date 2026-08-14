@@ -21,7 +21,12 @@ export const zhCN = {
   'toolbar.clear': '清除格式',
   'toolbar.undo': '撤销',
   'toolbar.redo': '重做',
+  'toolbar.markdown': 'Markdown 源码',
   'toolbar.ai': 'AI 助手',
+
+  // markdown source mode
+  'markdown.exit': '退出 Markdown 源码',
+  'markdown.placeholder': '在这里写 Markdown，退出源码模式即可套用',
 
   // code block
   'codeBlock.language': '代码语言',
@@ -147,7 +152,12 @@ export const en: Messages = {
   'toolbar.clear': 'Clear formatting',
   'toolbar.undo': 'Undo',
   'toolbar.redo': 'Redo',
+  'toolbar.markdown': 'Markdown source',
   'toolbar.ai': 'AI assistant',
+
+  // markdown source mode
+  'markdown.exit': 'Leave Markdown source',
+  'markdown.placeholder': 'Write Markdown here; leave source mode to apply it',
 
   'codeBlock.language': 'Language',
   'codeBlock.plain': 'Plain text',

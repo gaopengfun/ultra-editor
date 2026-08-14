@@ -40,7 +40,13 @@ let editor: Editor;
 let wrapper: VueWrapper;
 
 function mountToolbar(
-  props: { hasAI?: boolean; color?: string | null; locale?: 'zh-CN' | 'en' } = {}
+  props: {
+    hasAI?: boolean;
+    hasMarkdown?: boolean;
+    sourceMode?: boolean;
+    color?: string | null;
+    locale?: 'zh-CN' | 'en';
+  } = {}
 ) {
   const element = document.createElement('div');
   document.body.appendChild(element);
@@ -52,6 +58,8 @@ function mountToolbar(
       editor,
       color: props.color ?? null,
       hasAI: props.hasAI ?? false,
+      hasMarkdown: props.hasMarkdown ?? false,
+      sourceMode: props.sourceMode ?? false,
       t: createTranslator(props.locale ?? 'zh-CN')
     }
   });
@@ -298,6 +306,42 @@ describe('AI', () => {
 
     await ai.trigger('click');
     expect(wrapper.emitted('ai')).toHaveLength(1);
+  });
+});
+
+describe('markdown source toggle', () => {
+  it('is absent unless the host offers markdown', () => {
+    expect(findButton('Markdown 源码').exists()).toBe(false);
+
+    wrapper.unmount();
+    editor.destroy();
+    mountToolbar({ hasMarkdown: true });
+
+    expect(findButton('Markdown 源码').exists()).toBe(true);
+  });
+
+  it('asks its host to switch modes', async () => {
+    wrapper.unmount();
+    editor.destroy();
+    mountToolbar({ hasMarkdown: true });
+
+    await button('Markdown 源码').trigger('click');
+
+    expect(wrapper.emitted('toggle-source')).toHaveLength(1);
+  });
+
+  it('shows nothing but the way out while source mode is on', async () => {
+    wrapper.unmount();
+    editor.destroy();
+    mountToolbar({ hasMarkdown: true, sourceMode: true });
+
+    // Every other control would act on a document that is not on screen.
+    expect(findButton('加粗').exists()).toBe(false);
+    expect(findButton('撤销').exists()).toBe(false);
+    expect(findButton('Markdown 源码').exists()).toBe(false);
+
+    await button('退出 Markdown 源码').trigger('click');
+    expect(wrapper.emitted('toggle-source')).toHaveLength(1);
   });
 });
 

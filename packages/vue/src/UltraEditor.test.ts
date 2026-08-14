@@ -96,6 +96,8 @@ interface EditorApi {
   getHTML: () => string;
   getText: () => string;
   getJSON: () => Record<string, unknown>;
+  getMarkdown: () => string;
+  setMarkdown: (markdown: string) => void;
   setContent: (html: string) => void;
   focus: () => void;
   clear: () => void;
@@ -194,6 +196,9 @@ beforeEach(() => {
 afterEach(() => {
   wrapper.unmount();
   vi.restoreAllMocks();
+  // A test that fails before its own `useRealTimers` would otherwise leave fake
+  // timers installed and time out every test after it.
+  vi.useRealTimers();
 });
 
 describe('chrome', () => {
@@ -478,6 +483,133 @@ describe('public API', () => {
     await vi.waitFor(() => expect(editor.getText()).toContain('生成的内容'));
 
     expect(document.body.querySelector('.ue-ai-panel')).not.toBeNull();
+  });
+
+  it('hands out and takes back the document as markdown', async () => {
+    await mountEditor({ modelValue: '<h1>标题</h1><p><strong>粗</strong></p>' });
+
+    expect(api().getMarkdown()).toBe('# 标题\n\n**粗**');
+
+    api().setMarkdown('## 新标题\n\n- 一');
+    await nextTick();
+
+    // Tiptap parks a paragraph after a document that ends in a list, so there is
+    // somewhere to keep writing. It carries no text, so it serialises back to
+    // nothing and the Markdown round trip stays put.
+    expect(editor.getHTML()).toBe('<h2>新标题</h2><ul><li><p>一</p></li></ul><p></p>');
+    expect(api().getMarkdown()).toBe('## 新标题\n\n- 一');
+  });
+});
+
+describe('markdown source mode', () => {
+  const sourceToggle = () => wrapper.find('.ue-toolbar button[title="Markdown 源码"]');
+  const exitButton = () => wrapper.find('.ue-toolbar button[title="退出 Markdown 源码"]');
+  const textarea = () => wrapper.find<HTMLTextAreaElement>('textarea.ue-markdown');
+
+  it('swaps the document for its markdown, and back again', async () => {
+    await mountEditor({ modelValue: '<h1>标题</h1><p>正文</p>' });
+
+    await sourceToggle().trigger('click');
+
+    expect(textarea().exists()).toBe(true);
+    expect(textarea().element.value).toBe('# 标题\n\n正文');
+    // In source mode the textarea is the document, so that is what the API hands back.
+    expect(api().getMarkdown()).toBe('# 标题\n\n正文');
+    // The editing surface is hidden rather than destroyed, so the document — and
+    // its undo history — is still there to come back to.
+    expect(wrapper.find('.ue-editor').isVisible()).toBe(false);
+
+    await exitButton().trigger('click');
+
+    expect(textarea().exists()).toBe(false);
+    expect(wrapper.find('.ue-editor').isVisible()).toBe(true);
+  });
+
+  it('applies what was typed in the textarea to the document', async () => {
+    await mountEditor({ modelValue: '<p>正文</p>' });
+    await sourceToggle().trigger('click');
+
+    await textarea().setValue('## 改过了\n\n- 一\n- 二');
+    await exitButton().trigger('click');
+
+    expect(editor.getHTML()).toBe(
+      '<h2>改过了</h2><ul><li><p>一</p></li><li><p>二</p></li></ul><p></p>'
+    );
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([editor.getHTML()]);
+  });
+
+  it('keeps the model honest while the textarea is still open', async () => {
+    vi.useFakeTimers();
+    await mountEditor({ modelValue: '<p>正文</p>' });
+    await sourceToggle().trigger('click');
+
+    await textarea().setValue('# 边写边同步');
+    await vi.advanceTimersByTimeAsync(400);
+
+    // A host reading v-model mid-edit gets the document the Markdown describes,
+    // not the one from before the author switched into source mode.
+    expect(editor.getHTML()).toBe('<h1>边写边同步</h1><p></p>');
+  });
+
+  it('shows only the way out while the textarea is open', async () => {
+    await mountEditor();
+    await sourceToggle().trigger('click');
+
+    // Every other control acts on a document that is not on screen.
+    expect(findToolbarButton('加粗').exists()).toBe(false);
+    expect(exitButton().exists()).toBe(true);
+  });
+
+  it('does not throw the markdown away when unmounted from source mode', async () => {
+    await mountEditor({ modelValue: '<p>正文</p>' });
+    await sourceToggle().trigger('click');
+    await textarea().setValue('# 未退出就卸载');
+
+    wrapper.unmount();
+
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual(['<h1>未退出就卸载</h1><p></p>']);
+  });
+
+  it('takes markdown handed to it while the textarea is open', async () => {
+    await mountEditor({ modelValue: '<p>正文</p>' });
+    await sourceToggle().trigger('click');
+
+    api().setMarkdown('# 从外面塞进来');
+    await nextTick();
+
+    // The textarea is what the author is looking at, so it has to move too.
+    expect(textarea().element.value).toBe('# 从外面塞进来');
+    expect(editor.getHTML()).toBe('<h1>从外面塞进来</h1><p></p>');
+  });
+
+  it('converts pasted markdown in the document', async () => {
+    await mountEditor({ modelValue: '<p></p>' });
+
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      value: { getData: (type: string) => (type === 'text/plain' ? '## 粘贴来的' : '') }
+    });
+    editor.view.dom.dispatchEvent(event);
+
+    expect(editor.getHTML()).toContain('<h2>粘贴来的</h2>');
+  });
+
+  it('is absent when the host turns markdown off', async () => {
+    await mountEditor({ markdown: false });
+
+    expect(sourceToggle().exists()).toBe(false);
+  });
+
+  it('leaves a paste alone when the host turns markdown off', async () => {
+    await mountEditor({ modelValue: '<p></p>', markdown: false });
+
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      value: { getData: (type: string) => (type === 'text/plain' ? '## 粘贴来的' : '') }
+    });
+    editor.view.dom.dispatchEvent(event);
+
+    expect(editor.getHTML()).not.toContain('<h2>');
   });
 });
 

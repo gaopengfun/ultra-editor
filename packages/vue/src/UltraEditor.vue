@@ -2,6 +2,7 @@
 import {
   computed,
   defineAsyncComponent,
+  nextTick,
   onBeforeUnmount,
   onMounted,
   reactive,
@@ -17,9 +18,11 @@ import {
   createTranslator,
   createLeanUltraKit,
   DEFAULT_SLASH_ITEMS,
+  docToMarkdown,
   isAIStreamTransaction,
   isSafeLinkUrl,
   loadCommonLanguages,
+  markdownToHTML,
   refreshCodeHighlighting,
   resolveUploadOptions,
   rotateImage,
@@ -58,6 +61,9 @@ const props = withDefaults(defineProps<UltraEditorProps>(), {
   locale: 'zh-CN',
   toolbar: true,
   statusbar: true,
+  // Declared `boolean` props Vue casts to `false` when absent, so every one of
+  // them needs its default spelled out here or "not passed" reads as "off".
+  markdown: true,
   debounce: 0
 });
 
@@ -100,6 +106,59 @@ onMounted(async () => {
   // The import can outlive the component; a torn-down editor has nothing to paint.
   if (instance && !instance.isDestroyed) refreshCodeHighlighting(instance);
 });
+
+/* Markdown ------------------------------------------------------------------- */
+
+/**
+ * Source mode: the document becomes the Markdown that describes it, in a plain
+ * textarea, and comes back when the author leaves.
+ *
+ * The textarea is the source of truth while it is open — the document is only
+ * ever written *from* it, never back into it. Re-deriving the text from the
+ * document on each keystroke would reformat what the author is halfway through
+ * typing, which is the one thing a source view must never do.
+ */
+const sourceMode = ref(false);
+const source = ref('');
+const sourceInput = ref<HTMLTextAreaElement>();
+
+function applySource() {
+  const instance = editor.value;
+  /* v8 ignore next */
+  if (!instance) return;
+  const html = markdownToHTML(source.value);
+  if (html === instance.getHTML()) return;
+  instance.commands.setContent(html);
+}
+
+function toggleSourceMode() {
+  const instance = editor.value;
+  /* v8 ignore next */
+  if (!instance) return;
+  if (sourceMode.value) {
+    applySource();
+    sourceMode.value = false;
+    instance.commands.focus();
+    return;
+  }
+  // A pending debounced emit describes the document the author is leaving; let it
+  // out before the textarea takes over as the thing being edited.
+  flushEmit();
+  source.value = docToMarkdown(instance.state.doc);
+  sourceMode.value = true;
+  void nextTick(() => sourceInput.value?.focus());
+}
+
+// Applying on every keystroke keeps `v-model` honest while source mode is open —
+// a host reading the model mid-edit gets the document the Markdown describes,
+// not the one from before the author switched.
+let sourceTimer: ReturnType<typeof setTimeout> | undefined;
+const SOURCE_APPLY_DELAY = 300;
+
+function onSourceInput() {
+  clearTimeout(sourceTimer);
+  sourceTimer = setTimeout(applySource, props.debounce || SOURCE_APPLY_DELAY);
+}
 
 /* Slash menu ---------------------------------------------------------------- */
 
@@ -176,6 +235,9 @@ const slashRender = () => ({
 // Registered before `useEditor`, so a pending debounced value is serialized
 // before that composable tears down the ProseMirror schema during unmount.
 onBeforeUnmount(() => {
+  clearTimeout(sourceTimer);
+  // Unmounting from source mode must not throw the author's Markdown away.
+  if (sourceMode.value) applySource();
   clearTimeout(debounceTimer);
   flushEmit();
 });
@@ -190,6 +252,7 @@ const editor = useEditor({
     messages: props.messages,
     translator: () => t.value,
     lowlight,
+    markdownPaste: () => props.markdown,
     upload: {
       // Delegated through the computed so a handler swapped in after mount is honoured.
       upload: (file, filename) => upload.value.upload(file, filename),
@@ -680,6 +743,22 @@ defineExpose({
   /* v8 ignore next */
   getText: () => editor.value?.getText() ?? '',
   getJSON: () => editor.value?.getJSON(),
+  /** The document as Markdown. In source mode, exactly what is in the textarea. */
+  getMarkdown: () => {
+    if (sourceMode.value) return source.value;
+    const instance = editor.value;
+    /* v8 ignore next -- the exposed API is only reachable while the editor is mounted */
+    if (!instance) return '';
+    return docToMarkdown(instance.state.doc);
+  },
+  setMarkdown: (markdown: string) => {
+    if (sourceMode.value) {
+      source.value = markdown;
+      applySource();
+      return;
+    }
+    editor.value?.commands.setContent(markdownToHTML(markdown));
+  },
   setContent: (html: string) => editor.value?.commands.setContent(html || ''),
   focus: () => editor.value?.commands.focus(),
   clear: () => editor.value?.commands.clearContent(true),
@@ -698,15 +777,28 @@ defineExpose({
       :editor="editor"
       :color="currentColor"
       :has-a-i="hasAI"
+      :has-markdown="markdown"
+      :source-mode="sourceMode"
       :t="t"
       @color="setColor"
       @clear-color="clearColor"
       @link="setLink"
       @image="pickImage"
       @ai="ai.start('continue')"
+      @toggle-source="toggleSourceMode"
     />
 
-    <EditorContent class="ue-editor" :editor="editor" />
+    <textarea
+      v-if="sourceMode"
+      ref="sourceInput"
+      v-model="source"
+      class="ue-markdown"
+      spellcheck="false"
+      :aria-label="t('toolbar.markdown')"
+      :placeholder="t('markdown.placeholder')"
+      @input="onSourceInput"
+    />
+    <EditorContent v-show="!sourceMode" class="ue-editor" :editor="editor" />
 
     <div v-if="statusbar && editor" class="ue-statusbar">
       <span>{{ t('stats.words', { n: stats.words }) }}</span>
