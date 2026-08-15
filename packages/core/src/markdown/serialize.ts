@@ -208,10 +208,21 @@ function serializeBlocks(parent: ProseMirrorNode, depth: number): string {
 function serializeBlock(node: ProseMirrorNode, depth: number): string | null {
   switch (node.type.name) {
     case 'paragraph': {
-      const text = serializeInline(node);
+      // A hard break with no text after it writes `  ` and nothing else, and a
+      // blank line is precisely how Markdown ends a paragraph — read back, such a
+      // line splits the paragraph in two instead of continuing it, which is the
+      // blank line the author never typed. Markdown cannot hold two breaks in a
+      // row, so dropping the empty one loses the smaller half: one line break
+      // rather than the paragraph itself.
+      const lines = serializeInline(node)
+        .split('\n')
+        .filter((line) => line.trim());
+      // `trimEnd` is for a break that trailed the paragraph: its two spaces have
+      // nothing left to break away from, and some renderers read them as one.
+      const text = lines.map(escapeLeading).join('\n').trimEnd();
       // An empty paragraph carries no Markdown of its own; the blank line between
       // blocks already says everything it would have.
-      return text ? text.split('\n').map(escapeLeading).join('\n') : null;
+      return text || null;
     }
 
     case 'heading': {

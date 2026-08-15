@@ -181,6 +181,23 @@ describe('document to markdown', () => {
     expect(toMarkdown('<p>a<br>b</p>')).toBe('a  \nb');
   });
 
+  it('drops a hard break that has no line to break', () => {
+    // Markdown has no syntax for two breaks in a row: the second writes a line
+    // holding only its own `  ` marker, and a blank line ends the paragraph. Kept,
+    // it reads back as two paragraphs — a blank line the author never typed —
+    // and shows in the source view as a line that looks empty but is not.
+    expect(toMarkdown('<p>a<br><br>b</p>')).toBe('a  \nb');
+    expect(toMarkdown('<p>a<br></p>')).toBe('a');
+    expect(toMarkdown('<p><br>a</p>')).toBe('a');
+    // A paragraph that is nothing but a break carries no text at all.
+    expect(toMarkdown('<p>a</p><p><br></p><p>b</p>')).toBe('a\n\nb');
+  });
+
+  it('keeps a paragraph whole across a doubled break', () => {
+    // The break is lost either way; the paragraph must not be.
+    expect(markdownToHTML(toMarkdown('<p>a<br><br>b</p>'))).toBe('<p>a<br>b</p>');
+  });
+
   it('drops empty paragraphs rather than emitting blank blocks', () => {
     expect(toMarkdown('<p>a</p><p></p><p>b</p>')).toBe('a\n\nb');
   });
