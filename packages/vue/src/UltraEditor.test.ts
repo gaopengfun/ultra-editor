@@ -567,6 +567,25 @@ describe('markdown source mode', () => {
     expect(editor.getHTML()).toBe('<p>退出后新写的</p>');
   });
 
+  it('leaves the document alone when the author changed nothing', async () => {
+    // The list is what makes this bite: `markdownToHTML` writes a tight
+    // `<li>一</li>` where ProseMirror writes `<li><p>一</p></li>`, so comparing
+    // the two HTML strings never matched and the write always went through.
+    await mountEditor({ modelValue: '<ul><li><p>一</p></li><li><p>二</p></li></ul><p>正文</p>' });
+    const before = editor.getHTML();
+    expect(editor.can().undo()).toBe(false);
+
+    await sourceToggle().trigger('click');
+    await exitButton().trigger('click');
+
+    // Looking at the source is not editing it. Rewriting the document with the
+    // content it already had produces a transaction all the same, and that
+    // transaction is what the author's next Ctrl+Z lands on — undoing nothing
+    // visible instead of the edit they meant to take back.
+    expect(editor.getHTML()).toBe(before);
+    expect(editor.can().undo()).toBe(false);
+  });
+
   it('shows only the way out while the textarea is open', async () => {
     await mountEditor();
     await sourceToggle().trigger('click');

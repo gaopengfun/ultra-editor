@@ -126,9 +126,15 @@ function applySource() {
   const instance = editor.value;
   /* v8 ignore next */
   if (!instance) return;
-  const html = markdownToHTML(source.value);
-  if (html === instance.getHTML()) return;
-  instance.commands.setContent(html);
+  // Compared as Markdown, which is the one representation both sides share.
+  // Comparing the HTML instead never matches: `markdownToHTML` writes tight list
+  // items (`<li>text</li>`) where ProseMirror writes `<li><p>text</p></li>`, so
+  // the guard never fired and leaving source mode always wrote the document back
+  // — and a write is a document change, which is enough for the trailing-node
+  // plugin to append a paragraph nobody typed to anything ending in a list,
+  // quote, table or code block.
+  if (docToMarkdown(instance.state.doc) === source.value) return;
+  instance.commands.setContent(markdownToHTML(source.value));
 }
 
 function toggleSourceMode() {
