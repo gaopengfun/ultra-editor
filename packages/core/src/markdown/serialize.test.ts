@@ -216,6 +216,10 @@ describe('document to markdown', () => {
     expect(roundTrip('- 一\n- 二\n\n段落')).toBe('- 一\n- 二\n\n段落');
   });
 
+  it('ends the list at a trailing blank line, with nothing after it to continue', () => {
+    expect(markdownToHTML('- 一\n')).toBe('<ul><li>一</li></ul>');
+  });
+
   it('returns an empty string for an empty document', () => {
     expect(toMarkdown('')).toBe('');
   });
