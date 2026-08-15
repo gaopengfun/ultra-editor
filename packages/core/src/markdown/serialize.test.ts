@@ -202,6 +202,20 @@ describe('document to markdown', () => {
     expect(toMarkdown('<p>a</p><p></p><p>b</p>')).toBe('a\n\nb');
   });
 
+  it('keeps a second paragraph in the list item it was written under', () => {
+    const html = '<ul><li><p>一</p><p>续段</p></li><li><p>二</p></li></ul>';
+    const markdown = '- 一\n\n  续段\n- 二';
+    expect(toMarkdown(html)).toBe(markdown);
+    // Read back as the end of the list, the continuation became a top-level
+    // paragraph and split the list in two around itself — and each split wrote a
+    // blank line of its own, so the source grew a line every way it was opened.
+    expect(roundTrip(markdown)).toBe(markdown);
+  });
+
+  it('still lets an unindented paragraph end the list', () => {
+    expect(roundTrip('- 一\n- 二\n\n段落')).toBe('- 一\n- 二\n\n段落');
+  });
+
   it('returns an empty string for an empty document', () => {
     expect(toMarkdown('')).toBe('');
   });

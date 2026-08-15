@@ -338,6 +338,16 @@ function blocksToHTML(lines: string[], tight = false): string {
           index += 1;
           continue;
         }
+        // A blank line followed by an indented line is the *inside* of a loose
+        // item — the separator between two blocks of the same bullet — not the
+        // end of the list. Breaking here is what let a second paragraph escape
+        // its item and become a top-level block, splitting the list around it
+        // and growing a blank line either side on the way back out.
+        if (isBlank(lines[index]) && /^\s{2,}\S/.test(lines[index + 1] ?? '')) {
+          items[items.length - 1].lines.push('');
+          index += 1;
+          continue;
+        }
         break;
       }
       // `renderList` renders one homogeneous run and reports where it stopped —
