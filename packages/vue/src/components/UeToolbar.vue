@@ -120,6 +120,7 @@ const insertTable = ({ rows, cols }: { rows: number; cols: number }) =>
         :model-value="color"
         :title="t('toolbar.color')"
         :clear-label="t('table.clearColor')"
+        :t="t"
         @update:model-value="emit('color', $event)"
         @clear="emit('clear-color')"
       />

@@ -86,6 +86,13 @@ export const zhCN = {
   'table.cellColor': '单元格底色',
   'table.clearColor': '清除底色',
 
+  // colour picker
+  'color.custom': '自定义',
+  'color.area': '饱和度与明度，方向键微调',
+  'color.hue': '色相',
+  'color.hex': '十六进制颜色值',
+  'color.apply': '应用',
+
   // slash menu
   'slash.empty': '没有匹配的命令',
   'slash.group.basic': '基础',
@@ -211,6 +218,12 @@ export const en: Messages = {
   'table.delTable': 'Delete table',
   'table.cellColor': 'Cell background',
   'table.clearColor': 'Clear background',
+
+  'color.custom': 'Custom',
+  'color.area': 'Saturation and brightness, arrow keys to nudge',
+  'color.hue': 'Hue',
+  'color.hex': 'Hex colour',
+  'color.apply': 'Apply',
 
   'slash.empty': 'No matching command',
   'slash.group.basic': 'Basic',

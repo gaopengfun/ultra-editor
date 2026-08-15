@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrastText } from './color';
+import { contrastText, hexToHsv, hsvToHex, normalizeHex } from './color';
 
 const DARK = '#1f2937';
 const LIGHT = '#ffffff';
@@ -39,5 +39,55 @@ describe('contrastText', () => {
     expect(contrastText('transparent')).toBe(LIGHT);
     expect(contrastText('#ff')).toBe(LIGHT);
     expect(contrastText('')).toBe(LIGHT);
+  });
+});
+
+describe('normalizeHex', () => {
+  it('expands shorthand and settles on one casing', () => {
+    expect(normalizeHex('#ABC')).toBe('#aabbcc');
+    expect(normalizeHex('#AABBCC')).toBe('#aabbcc');
+  });
+
+  it('takes a hex without its hash, and ignores surrounding space', () => {
+    // What people type into a field already labelled "hex".
+    expect(normalizeHex('5b5bd6')).toBe('#5b5bd6');
+    expect(normalizeHex('  #5b5bd6  ')).toBe('#5b5bd6');
+  });
+
+  it('rejects anything that is not a hex colour', () => {
+    expect(normalizeHex('#ff')).toBeNull();
+    expect(normalizeHex('#abcde')).toBeNull();
+    expect(normalizeHex('rgb(1, 2, 3)')).toBeNull();
+    expect(normalizeHex('')).toBeNull();
+  });
+});
+
+describe('hexToHsv and hsvToHex', () => {
+  it('reads the primaries off the colour wheel', () => {
+    expect(hexToHsv('#ff0000')).toEqual({ h: 0, s: 1, v: 1 });
+    expect(hexToHsv('#00ff00')).toEqual({ h: 120, s: 1, v: 1 });
+    expect(hexToHsv('#0000ff')).toEqual({ h: 240, s: 1, v: 1 });
+  });
+
+  it('reports no saturation for a grey, and value as its brightness', () => {
+    expect(hexToHsv('#000000')).toEqual({ h: 0, s: 0, v: 0 });
+    expect(hexToHsv('#ffffff')).toEqual({ h: 0, s: 0, v: 1 });
+    expect(hexToHsv('#808080')?.s).toBe(0);
+  });
+
+  it('round-trips a colour through HSV and back', () => {
+    for (const hex of ['#5b5bd6', '#51a5dc', '#facc15', '#1f2937', '#ffffff', '#000000']) {
+      expect(hsvToHex(hexToHsv(hex)!)).toBe(hex);
+    }
+  });
+
+  it('writes the top of the wheel as red, the same as the bottom', () => {
+    // 360° is the rail's far end; the sector maths has to wrap it back to 0.
+    expect(hsvToHex({ h: 360, s: 1, v: 1 })).toBe('#ff0000');
+    expect(hsvToHex({ h: 0, s: 1, v: 1 })).toBe('#ff0000');
+  });
+
+  it('returns null for a colour it cannot parse', () => {
+    expect(hexToHsv('transparent')).toBeNull();
   });
 });
