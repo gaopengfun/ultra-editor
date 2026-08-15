@@ -198,6 +198,22 @@ describe('document to markdown', () => {
     expect(markdownToHTML(toMarkdown('<p>a<br><br>b</p>'))).toBe('<p>a<br>b</p>');
   });
 
+  it('folds a break inside a heading, which markdown can only write on one line', () => {
+    // Spilled onto a second line the remainder comes back as a paragraph, so the
+    // heading loses its level. A space costs the break and keeps the heading.
+    expect(toMarkdown('<h2>标题<br>第二行</h2>')).toBe('## 标题 第二行');
+    expect(toMarkdown('<h2><br><br>标题</h2>')).toBe('## 标题');
+    expect(roundTrip('## 标题 第二行')).toBe('## 标题 第二行');
+  });
+
+  it('folds a break inside a table cell, marker and all', () => {
+    // A cell is one line too. Left behind, the marker's two spaces show as a gap
+    // that the next trip out would trim — so the source never settled.
+    expect(toMarkdown('<table><tbody><tr><td><p>a<br>b</p></td></tr></tbody></table>')).toBe(
+      '| a b |\n| --- |'
+    );
+  });
+
   it('drops empty paragraphs rather than emitting blank blocks', () => {
     expect(toMarkdown('<p>a</p><p></p><p>b</p>')).toBe('a\n\nb');
   });

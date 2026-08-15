@@ -120,6 +120,18 @@ function imageMarkdown(node: ProseMirrorNode): string {
   return `![${escapeInline(alt)}](${src}${title ? ` "${title}"` : ''})`;
 }
 
+/**
+ * Flatten a textblock onto one line.
+ *
+ * For the places Markdown gives a line break nowhere to land — an ATX heading, a
+ * table cell. The break marker goes with the newline: leaving its two spaces
+ * behind would show as a gap the author never typed, and on the next trip out
+ * they would be trimmed anyway, so the source never settled.
+ */
+function foldBreaks(text: string): string {
+  return text.replace(/\s*\n\s*/g, ' ').trim();
+}
+
 function prefixLines(text: string, first: string, rest = first): string {
   return text
     .split('\n')
@@ -138,7 +150,7 @@ function tableRow(row: ProseMirrorNode): string[] {
   row.forEach((cell) => {
     const parts: string[] = [];
     cell.forEach((block) => parts.push(serializeInline(block)));
-    cells.push(parts.join(' ').replace(/\|/g, '\\|').replace(/\n/g, ' ').trim());
+    cells.push(foldBreaks(parts.join(' ').replace(/\|/g, '\\|')));
   });
   return cells;
 }
@@ -230,7 +242,11 @@ function serializeBlock(node: ProseMirrorNode, depth: number): string | null {
       // clamp is what keeps a host's extra level from emitting `####### `.
       /* v8 ignore next */
       const level = Math.min(6, Math.max(1, (node.attrs.level as number | undefined) ?? 1));
-      return `${'#'.repeat(level)} ${serializeInline(node)}`;
+      // An ATX heading is one line by definition, so a hard break inside one has
+      // nowhere to go. Written out, the rest of the heading lands on a line of its
+      // own and reads back as a paragraph — the words survive but the heading does
+      // not. Folding the break into a space keeps both.
+      return `${'#'.repeat(level)} ${foldBreaks(serializeInline(node))}`;
     }
 
     case 'codeBlock': {
