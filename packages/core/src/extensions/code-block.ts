@@ -2,7 +2,7 @@ import {
   CodeBlockLowlight,
   type CodeBlockLowlightOptions
 } from '@tiptap/extension-code-block-lowlight';
-import type { Editor } from '@tiptap/core';
+import { mergeAttributes, type Attributes, type Editor } from '@tiptap/core';
 import type { createLowlight } from 'lowlight';
 import { isBrowser } from '../utils/env';
 import { createTranslator, type LocaleName, type Messages, type Translator } from '../i18n';
@@ -141,6 +141,49 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
       messages: {},
       translator: undefined
     };
+  },
+
+  addAttributes() {
+    const inherited = this.parent?.() as Attributes;
+    // Upstream always declares `language` with a `parseHTML`; the cast is for the
+    // type, not for a shape this node can be built without.
+    const fromClass = inherited.language.parseHTML as (element: HTMLElement) => string | null;
+    return {
+      ...inherited,
+      language: {
+        ...inherited.language,
+        // Two places to read from, because two places write. `data-language` on
+        // the `<pre>` is what this editor emits; the `language-` class on the
+        // `<code>` is what the rest of the world emits — the Markdown parser's
+        // fenced blocks, every document saved before this attribute existed, and
+        // anything pasted in from elsewhere.
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute('data-language') || fromClass(element)
+      }
+    };
+  },
+
+  /**
+   * `data-language` on the `<pre>`, alongside the class upstream puts on the
+   * `<code>`.
+   *
+   * The class is the only record upstream keeps, and it is the first casualty of
+   * an HTML sanitiser: allow-lists rarely carry an entry for `class`, so a saved
+   * document comes back with the language gone. A data attribute on the element
+   * that *is* the code block survives that, and gives a read-only page something
+   * to label or style the block with.
+   */
+  renderHTML({ node, HTMLAttributes }) {
+    const language = (node.attrs.language as string | null) ?? null;
+    return [
+      'pre',
+      mergeAttributes(
+        this.options.HTMLAttributes,
+        HTMLAttributes,
+        language ? { 'data-language': language } : {}
+      ),
+      ['code', { class: language ? `${this.options.languageClassPrefix}${language}` : null }, 0]
+    ];
   },
 
   addNodeView() {

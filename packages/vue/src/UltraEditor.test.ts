@@ -322,7 +322,7 @@ describe('two-way binding', () => {
   });
 
   it('stays quiet when the arriving grammars repaint the code blocks', async () => {
-    const html = '<pre><code class="language-python">x = 1</code></pre>';
+    const html = '<pre data-language="python"><code class="language-python">x = 1</code></pre>';
     await mountEditor({ modelValue: html });
 
     // The repaint is the point: wait for the block to actually be highlighted.

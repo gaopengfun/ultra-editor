@@ -58,7 +58,7 @@ describe('code block chrome', () => {
     // gets a bare <pre><code>.
     expect(html).not.toContain('ue-codeblock');
     expect(html).not.toContain('<button');
-    expect(html).toBe('<pre><code class="language-css">a{}</code></pre>');
+    expect(html).toBe('<pre data-language="css"><code class="language-css">a{}</code></pre>');
   });
 
   it('draws the picker and the copy button on the block while editing', () => {
@@ -128,10 +128,40 @@ describe('code block language picker', () => {
     trigger().click();
     option('Rust').click();
 
-    expect(editor.getHTML()).toContain('<pre><code class="language-rust">a{}</code></pre>');
+    expect(editor.getHTML()).toContain(
+      '<pre data-language="rust"><code class="language-rust">a{}</code></pre>'
+    );
     expect(trigger().textContent).toBe('Rust');
     // The menu is teleported to <body>; picking has to take it back down again.
     expect(menu()).toBeNull();
+  });
+
+  it('writes the language onto the pre as well as the code', () => {
+    // The class on the <code> is the only place upstream records the language, and
+    // it is the first thing an HTML sanitiser drops — most allow-lists have no
+    // entry for `class`. On the <pre> as a data attribute it survives the trip,
+    // and a read-only page can style or label the block from it.
+    trigger().click();
+    option('Rust').click();
+
+    const pre = document.createElement('div');
+    pre.innerHTML = editor.getHTML();
+    expect(pre.querySelector('pre')?.getAttribute('data-language')).toBe('rust');
+  });
+
+  it('reads the language back off the pre', () => {
+    editor.commands.setContent('<pre data-language="rust"><code>fn main() {}</code></pre>');
+
+    expect(trigger().textContent).toBe('Rust');
+    expect(editor.getHTML()).toContain('data-language="rust"');
+  });
+
+  it('still reads a language written only as a class on the code', () => {
+    // Every document saved before `data-language` existed, and everything the
+    // Markdown parser produces from a fenced block.
+    editor.commands.setContent('<pre><code class="language-rust">fn main() {}</code></pre>');
+
+    expect(trigger().textContent).toBe('Rust');
   });
 
   it('drops the class entirely when plain text is picked', () => {
@@ -140,6 +170,7 @@ describe('code block language picker', () => {
 
     expect(editor.getHTML()).toContain('<pre><code>a{}</code></pre>');
     expect(editor.getHTML()).not.toContain('language-');
+    expect(editor.getHTML()).not.toContain('data-language');
     expect(code().className).toBe('');
   });
 
