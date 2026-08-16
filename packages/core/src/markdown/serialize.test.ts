@@ -392,4 +392,35 @@ describe('looksLikeMarkdown', () => {
     // worse than leaving a stray bit of Markdown untouched.
     expect(looksLikeMarkdown(text)).toBe(false);
   });
+
+  // Two inline signals are needed for a `true`, so each of these pairs an
+  // emphasis run with a code span to isolate what the emphasis check itself says.
+  it.each([
+    ['**粗** 和 `code`', true],
+    ['~~删~~ 和 `code`', true],
+    ['**a*** 和 `code`', true],
+    ['** 开头是空格** 和 `code`', false],
+    ['**结尾是空格 ** 和 `code`', false],
+    ['**** 和 `code`', false],
+    ['开着的 **加粗 和 `code`', false],
+    ['**跨\n行** 和 `code`', true]
+  ])('reads the emphasis in %j as %s', (text, expected) => {
+    expect(looksLikeMarkdown(text)).toBe(expected);
+  });
+
+  it('answers in linear time for a paste full of unpaired emphasis', () => {
+    // `**kwargs` in pasted Python, `~~` used as a wave dash in Chinese: openers
+    // with no closer. The lazy regexes this replaced ran to the end of the input
+    // and backtracked once per opener, which took 2.7 s on this exact string.
+    const text = 'lorem ipsum dolor sit amet **consectetur ~~adipiscing elit. '.repeat(16_000);
+
+    const started = performance.now();
+    const result = looksLikeMarkdown(text);
+    const elapsed = performance.now() - started;
+
+    expect(result).toBe(false);
+    // Measured at ~1 ms. The bound is loose on purpose — this is here to catch a
+    // return to quadratic scanning, not to police milliseconds on a busy machine.
+    expect(elapsed).toBeLessThan(150);
+  });
 });
