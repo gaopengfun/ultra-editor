@@ -162,6 +162,22 @@ describe('visibility', () => {
   });
 });
 
+describe('measurement', () => {
+  it('measures the selection once per transaction, not once per event it fires', async () => {
+    await select(1, 3);
+
+    const coordsAtPos = vi.spyOn(editor.view, 'coordsAtPos');
+    // A selection that genuinely moves — `selectionUpdate` only fires when it did.
+    await select(2, 3);
+
+    // Two positions — the selection's start and its end. Tiptap emits `transaction`
+    // for every dispatch and `selectionUpdate` on top of it whenever the selection
+    // moved, so listening to both makes the bubble re-measure the same transaction
+    // twice, and every measurement forces layout.
+    expect(coordsAtPos).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('formatting', () => {
   const MARKS = [
     { title: '加粗', tag: 'strong' },

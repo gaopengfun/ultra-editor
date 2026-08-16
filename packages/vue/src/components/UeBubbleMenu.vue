@@ -79,14 +79,17 @@ watch(visible, (value) => {
   else window.removeEventListener('mousedown', onOutside, true);
 });
 
+// `transaction` alone, not `transaction` + `selectionUpdate`: Tiptap emits the
+// former for every dispatch it applies and the latter immediately after, on the
+// same dispatch, whenever the selection moved. Listening to both re-ran `update`
+// twice for one transaction — and each run measures two document positions, which
+// forces layout.
 onMounted(() => {
-  props.editor.on('selectionUpdate', update);
   props.editor.on('transaction', update);
   props.editor.on('blur', update);
 });
 
 onBeforeUnmount(() => {
-  props.editor.off('selectionUpdate', update);
   props.editor.off('transaction', update);
   props.editor.off('blur', update);
   window.removeEventListener('mousedown', onOutside, true);

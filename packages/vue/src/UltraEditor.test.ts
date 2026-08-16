@@ -668,6 +668,50 @@ describe('word count', () => {
 
     expect(statusbar()).toContain('3 字');
   });
+
+  it('does not re-read the document when only the caret moved', async () => {
+    await mountEditor({ modelValue: '<p>你好 hello world</p>' });
+    await flush();
+
+    const getText = vi.spyOn(editor, 'getText');
+    for (let step = 0; step < 5; step++) {
+      editor.commands.setTextSelection(2 + step);
+      await flush();
+    }
+
+    // A caret move republishes editor state like any other transaction, so the
+    // count is recomputed unless the document itself is the cache key.
+    expect(getText).not.toHaveBeenCalled();
+    expect(statusbar()).toContain('4 字');
+  });
+
+  it('treats every JavaScript whitespace code point as whitespace', async () => {
+    // One of each class `\s` covers: ASCII controls, NBSP, Ogham, the U+2000 run,
+    // the line/paragraph separators, and the ideographic space CJK text is full of.
+    const spaces = '\t\n\v\f\r         　﻿';
+    await mountEditor({ modelValue: `<p>ab${spaces}cd</p>` });
+    await flush();
+
+    expect(statusbar()).toContain('4 字符');
+    expect(statusbar()).toContain('2 字');
+  });
+
+  it('counts an apostrophe as part of the word it sits in', async () => {
+    await mountEditor({ modelValue: `<p>don't stop</p>` });
+    await flush();
+
+    expect(statusbar()).toContain('2 字');
+  });
+
+  it('counts a character outside the CJK range as neither a word nor CJK', async () => {
+    // U+20000 is a CJK extension-B ideograph: a surrogate pair that this counter
+    // has never included (see the range in the source), and must keep not counting.
+    await mountEditor({ modelValue: '<p>\u{20000}</p>' });
+    await flush();
+
+    expect(statusbar()).toContain('0 字');
+    expect(statusbar()).toContain('2 字符');
+  });
 });
 
 describe('locale and messages', () => {
@@ -2077,5 +2121,21 @@ describe('AI', () => {
       document.body.querySelectorAll<HTMLButtonElement>('.ue-bubble .ue-menu__item')
     ).map((item) => item.textContent?.trim());
     expect(items).toEqual(['翻译']);
+  });
+
+  it('hands the bubble the same task list on every keystroke', async () => {
+    await mountEditor({ ai: { provider: provider(['x']) } });
+    await flush();
+
+    const bubble = wrapper.getComponent({ name: 'UeBubbleMenu' });
+    const first = bubble.props('tasks');
+
+    editor.commands.insertContent('打字');
+    await flush();
+
+    // The default list is rebuilt where it is written. Spelled inline in the
+    // template it would be a new array per render — and this component re-renders
+    // on every transaction — which re-runs the bubble's own filtering each time.
+    expect(bubble.props('tasks')).toBe(first);
   });
 });

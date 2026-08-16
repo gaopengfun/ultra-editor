@@ -251,10 +251,13 @@ function serializeBlock(node: ProseMirrorNode, depth: number): string | null {
 
     case 'codeBlock': {
       const language = (node.attrs.language as string | null) ?? '';
+      // Read once: `textContent` is a getter that rebuilds the string from the
+      // node's children on every access, and this used it as a loop condition.
+      const code = node.textContent;
       // Long enough to not be closed by backticks inside the code.
       let fence = '```';
-      while (node.textContent.includes(fence)) fence += '`';
-      return `${fence}${language}\n${node.textContent}\n${fence}`;
+      while (code.includes(fence)) fence += '`';
+      return `${fence}${language}\n${code}\n${fence}`;
     }
 
     case 'blockquote':
