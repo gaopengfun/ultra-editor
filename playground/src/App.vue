@@ -130,12 +130,17 @@ const upload = async (file: Blob) => {
         <input v-model="apiKey" type="password" placeholder="apiKey（仅本地调试）" />
       </section>
 
+      <!-- `debounce` is what a real app should do with a document of any size, and
+           this page needs it twice over: every emit re-renders the HTML dump and
+           re-parses the whole document into the read-only preview below, so at 0 the
+           playground felt slower than the editor actually is. -->
       <UltraEditor
         v-model="html"
         :locale="locale"
         :editable="editable"
         :upload="upload"
         :ai="{ provider, ghostText, slash: true }"
+        :debounce="150"
         min-height="360px"
       />
 
