@@ -69,7 +69,7 @@ describe('code block chrome', () => {
 
   it('shows plain text as the language of an untagged block', () => {
     editor.commands.setContent('<pre><code>裸代码</code></pre>');
-    expect(trigger().textContent).toBe('纯文本');
+    expect(trigger().textContent).toBe('PlainText');
   });
 
   it('keeps a key press on the toolbar out of the document', () => {
@@ -166,7 +166,7 @@ describe('code block language picker', () => {
 
   it('drops the class entirely when plain text is picked', () => {
     trigger().click();
-    option('纯文本').click();
+    option('PlainText').click();
 
     expect(editor.getHTML()).toContain('<pre><code>a{}</code></pre>');
     expect(editor.getHTML()).not.toContain('language-');
@@ -198,7 +198,7 @@ describe('code block language picker', () => {
 
     expect(labels).not.toContain('plaintext');
     expect(labels).not.toContain('php-template');
-    expect(labels).toContain('纯文本');
+    expect(labels).toContain('PlainText');
   });
 
   it('shows a host-registered language under its raw highlight.js id', () => {
@@ -236,7 +236,7 @@ describe('code block language picker', () => {
     trigger().click();
 
     expect(document.activeElement).toBe(options()[0]);
-    expect(options()[0].textContent).toBe('纯文本');
+    expect(options()[0].textContent).toBe('PlainText');
   });
 
   it('walks the list with the arrow keys and wraps at both ends', () => {
@@ -388,7 +388,7 @@ describe('code block language catalogue', () => {
     // This is the state the Vue component mounts in: the grammars are still in
     // flight, so the picker has nothing but plain text to offer.
     trigger().click();
-    expect(options().map((item) => item.textContent)).toEqual(['纯文本']);
+    expect(options().map((item) => item.textContent)).toEqual(['PlainText']);
     trigger().click();
 
     lowlight.register('rust', common.rust);

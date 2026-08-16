@@ -30,7 +30,9 @@ export const zhCN = {
 
   // code block
   'codeBlock.language': '代码语言',
-  'codeBlock.plain': '纯文本',
+  // Not translated: it sits in a list of language names (JavaScript, CSS, Rust)
+  // that are proper nouns everywhere, and was the only entry that read as Chinese.
+  'codeBlock.plain': 'PlainText',
   'codeBlock.copy': '复制',
   'codeBlock.copied': '已复制',
 
