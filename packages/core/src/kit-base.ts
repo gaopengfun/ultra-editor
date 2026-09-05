@@ -7,7 +7,7 @@ import { Table } from '@tiptap/extension-table';
 import type { createLowlight } from 'lowlight';
 
 import { ImageFigure, DEFAULT_IMAGE_RESIZE } from './extensions/image-figure';
-import { UltraCodeBlock } from './extensions/code-block';
+import { UltraCodeBlock, withoutLanguageGuessing } from './extensions/code-block';
 import { Column, ColumnBlock } from './extensions/columns';
 import { ColorTableCell, ColorTableHeader } from './extensions/table-cells';
 import { ResizableTableRow } from './extensions/table-row';
@@ -156,7 +156,7 @@ export function createUltraKitWithLowlight(
   if (features.codeBlock) {
     extensions.push(
       UltraCodeBlock.configure({
-        lowlight: options.lowlight ?? defaultLowlight(),
+        lowlight: withoutLanguageGuessing(options.lowlight ?? defaultLowlight()),
         locale: options.locale ?? 'zh-CN',
         messages: options.messages ?? {},
         translator: options.translator

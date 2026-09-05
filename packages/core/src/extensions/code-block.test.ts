@@ -72,6 +72,23 @@ describe('code block chrome', () => {
     expect(trigger().textContent).toBe('PlainText');
   });
 
+  // highlight.js only guesses when no language is set, and on snippets this
+  // short it guesses badly — this one reads as `ini`, which paints the trailing
+  // semicolon as a comment. "PlainText" has to mean plain text.
+  it('leaves an untagged block unhighlighted instead of guessing at it', () => {
+    editor.commands.setContent('<pre><code>const greet = (name) => `hi ${name}`;</code></pre>');
+
+    expect(trigger().textContent).toBe('PlainText');
+    expect(code().querySelector('[class*="hljs"]')).toBeNull();
+    expect(code().textContent).toBe('const greet = (name) => `hi ${name}`;');
+  });
+
+  it('still highlights a block that names its language', () => {
+    editor.commands.setContent('<pre><code class="language-css">a{color:red}</code></pre>');
+
+    expect(code().querySelector('[class*="hljs"]')).not.toBeNull();
+  });
+
   it('keeps a key press on the toolbar out of the document', () => {
     editor.commands.setTextSelection(1);
     const before = editor.getHTML();

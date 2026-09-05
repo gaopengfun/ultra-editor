@@ -11,6 +11,26 @@ import { ULTRA_EDITOR_OPTIONS_META } from './runtime-options';
 /** Structural type for a lowlight instance, without importing the module for it. */
 type LowlightRegistry = ReturnType<typeof createLowlight>;
 
+/**
+ * The same highlighter with its language guessing switched off.
+ *
+ * highlight.js only guesses when a block names no language, and on the short
+ * snippets people actually paste it is wrong about half the time — a JavaScript
+ * arrow function reads as `ini`, so the trailing semicolon paints as a comment;
+ * Go reads as `csharp`. The picker calls an untagged block "PlainText", and this
+ * is what makes that label true. A block that names its language is untouched.
+ *
+ * Delegates through the prototype instead of copying: `loadCommonLanguages`
+ * registers grammars on the original afterwards, and those have to stay visible.
+ */
+export function withoutLanguageGuessing(lowlight: LowlightRegistry): LowlightRegistry {
+  return Object.create(lowlight, {
+    highlightAuto: {
+      value: (value: string) => ({ type: 'root', children: [{ type: 'text', value }] })
+    }
+  }) as LowlightRegistry;
+}
+
 export interface UltraCodeBlockOptions extends CodeBlockLowlightOptions {
   locale: LocaleName;
   messages: Partial<Messages>;
