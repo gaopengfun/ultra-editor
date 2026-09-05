@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { Editor } from '@tiptap/vue-3';
 import UeIcon from './UeIcon.vue';
+import { clampToViewport } from '../composables/useFloating';
 import type { AITask, MessageKey, Translator } from '@ultra-editor/core/lean';
 
 /**
@@ -37,6 +38,28 @@ const TASK_LABEL: Record<string, MessageKey> = {
 
 const aiTasks = computed(() => props.tasks.filter((task) => task in TASK_LABEL));
 
+const GAP = 8;
+/** Last measured size, so a re-show lands in the right place on its first frame. */
+let box = { width: 0, height: 0 };
+
+type Coords = { left: number; top: number; bottom: number };
+
+/**
+ * Centre the bubble over the selection, above it by preference.
+ *
+ * Above is where it stays out of the way of what is being written, but a
+ * selection on the first visible line has no room there — and clamping down into
+ * the viewport would only park the bubble on top of the words it belongs to, so
+ * it flips underneath instead. Sizes are measured rather than assumed: the bar
+ * is wider in English than in Chinese, and wider again once a provider adds the
+ * AI entry, which is exactly when it starts running off a narrow window.
+ */
+function positionFor(start: Coords, end: Coords, size: { width: number; height: number }) {
+  const above = start.top - size.height - GAP;
+  const top = above >= GAP ? above : end.bottom + GAP;
+  return clampToViewport({ x: (start.left + end.left) / 2 - size.width / 2, y: top }, size, GAP);
+}
+
 function update() {
   const { editor } = props;
   const { state, view } = editor;
@@ -50,11 +73,16 @@ function update() {
 
   const start = view.coordsAtPos(from);
   const end = view.coordsAtPos(to);
-  rect.value = {
-    left: Math.max(12, (start.left + end.left) / 2),
-    top: Math.max(12, start.top - 12)
-  };
+  rect.value = positionFor(start, end, box);
   visible.value = true;
+
+  void nextTick(() => {
+    const el = root.value;
+    if (!el) return;
+    const measured = el.getBoundingClientRect();
+    box = { width: measured.width, height: measured.height };
+    rect.value = positionFor(start, end, box);
+  });
 }
 
 function pick(task: AITask) {
@@ -102,7 +130,7 @@ onBeforeUnmount(() => {
       v-if="visible"
       ref="root"
       class="ue-bubble"
-      :style="{ left: rect.left + 'px', top: rect.top + 'px', transform: 'translate(-50%, -100%)' }"
+      :style="{ left: rect.left + 'px', top: rect.top + 'px' }"
     >
       <button
         type="button"

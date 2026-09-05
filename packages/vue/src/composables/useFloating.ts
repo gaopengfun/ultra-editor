@@ -18,15 +18,16 @@ export function clampToViewport(
   rect: { width: number; height: number },
   gap = 8
 ): { left: number; top: number } {
-  let left = anchor.x;
-  let top = anchor.y;
-  if (left + rect.width + gap > window.innerWidth) {
-    left = Math.max(gap, window.innerWidth - rect.width - gap);
-  }
-  if (top + rect.height + gap > window.innerHeight) {
-    top = Math.max(gap, window.innerHeight - rect.height - gap);
-  }
-  return { left, top };
+  // Clamped at both ends, not just the far one: a caller that centres a surface
+  // on something — the selection bubble subtracts half its own width — can hand
+  // over a negative coordinate, and a surface taller or wider than the window
+  // has to settle at the near edge rather than the far one.
+  const fit = (start: number, size: number, viewport: number) =>
+    Math.min(Math.max(gap, start), Math.max(gap, viewport - size - gap));
+  return {
+    left: fit(anchor.x, rect.width, window.innerWidth),
+    top: fit(anchor.y, rect.height, window.innerHeight)
+  };
 }
 
 /**

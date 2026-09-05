@@ -90,12 +90,25 @@ async function select(from: number, to: number) {
 
 beforeEach(() => {
   document.body.innerHTML = '';
+  vi.stubGlobal('innerWidth', 1000);
+  vi.stubGlobal('innerHeight', 800);
+  // The bubble has to have a size for its own placement math to mean anything.
+  const measure = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: HTMLElement
+  ) {
+    return this.classList?.contains('ue-bubble')
+      ? ({ width: 200, height: 40, left: 0, top: 0, right: 200, bottom: 40 } as DOMRect)
+      : measure.call(this);
+  });
   mountBubble();
 });
 
 afterEach(() => {
   wrapper.unmount();
   editor.destroy();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('visibility', () => {
@@ -142,9 +155,26 @@ describe('visibility', () => {
     );
 
     await select(1, 3);
+    await nextTick();
 
-    expect(bubble()?.style.left).toBe('250px');
-    expect(bubble()?.style.top).toBe('88px');
+    // Midpoint 250 less half of a 200-wide bubble; 100 less its height and the gap.
+    expect(bubble()?.style.left).toBe('150px');
+    expect(bubble()?.style.top).toBe('52px');
+  });
+
+  // Drawn above the selection, a bubble anchored to the first visible line hangs
+  // off the top of the window where none of its buttons can be reached.
+  it('flips below the selection when there is no room above it', async () => {
+    vi.spyOn(editor.view, 'coordsAtPos').mockImplementation((pos) =>
+      pos === 1
+        ? { left: 200, right: 210, top: 20, bottom: 36 }
+        : { left: 300, right: 310, top: 20, bottom: 36 }
+    );
+
+    await select(1, 3);
+    await nextTick();
+
+    expect(bubble()?.style.top).toBe('44px');
   });
 
   it('keeps itself inside the viewport when the selection sits at the very edge', async () => {
@@ -156,9 +186,44 @@ describe('visibility', () => {
     });
 
     await select(1, 3);
+    await nextTick();
 
-    expect(bubble()?.style.left).toBe('12px');
-    expect(bubble()?.style.top).toBe('12px');
+    expect(bubble()?.style.left).toBe('8px');
+    expect(bubble()?.style.top).toBe('28px');
+  });
+
+  // The editor can be torn down with a selection still live, between the bubble
+  // being drawn at the selection and being measured.
+  it('gives up measuring itself if it is torn down first', async () => {
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({
+      left: 200,
+      right: 210,
+      top: 300,
+      bottom: 320
+    });
+
+    editor.view.dom.focus();
+    editor.commands.setTextSelection({ from: 1, to: 3 });
+    wrapper.unmount();
+    await nextTick();
+    await nextTick();
+
+    expect(bubble()).toBeNull();
+  });
+
+  it('pulls itself off the right edge rather than overflowing it', async () => {
+    vi.stubGlobal('innerWidth', 400);
+    vi.spyOn(editor.view, 'coordsAtPos').mockImplementation((pos) =>
+      pos === 1
+        ? { left: 380, right: 385, top: 300, bottom: 320 }
+        : { left: 390, right: 395, top: 300, bottom: 320 }
+    );
+
+    await select(1, 3);
+    await nextTick();
+
+    // 400 − 200 wide − 8 gap.
+    expect(bubble()?.style.left).toBe('192px');
   });
 });
 
