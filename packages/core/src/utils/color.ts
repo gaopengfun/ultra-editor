@@ -81,11 +81,38 @@ export function hsvToHex({ h, s, v }: HSV): string {
   return `#${channels[sector].map((channel) => toHex((channel + base) * 255)).join('')}`;
 }
 
-/** Readable text colour for a given background — keeps table cells legible at any fill. */
+const INK_DARK = '#1f2937';
+const INK_LIGHT = '#ffffff';
+
+/** WCAG relative luminance. Channels are gamma-encoded, so they linearise first. */
+function relativeLuminance([r, g, b]: [number, number, number]): number {
+  const [rl, gl, bl] = [r, g, b].map((channel) => {
+    const v = channel / 255;
+    return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+}
+
+const contrastRatio = (a: number, b: number) =>
+  a > b ? (a + 0.05) / (b + 0.05) : (b + 0.05) / (a + 0.05);
+
+/**
+ * Readable text colour for a given background — keeps table cells legible at any fill.
+ *
+ * Measures both candidates and keeps the better one rather than comparing a
+ * brightness figure against a cut-off. The two disagree across the mid-tones:
+ * weighting gamma-encoded channels overstates how light a saturated mid colour
+ * is, so a threshold puts white on fills where white is the harder of the two to
+ * read — `#51a5dc` scores 2.7:1 against white and 5.4:1 against the dark ink.
+ */
+const INK_DARK_LUMINANCE = relativeLuminance([0x1f, 0x29, 0x37]);
+const INK_LIGHT_LUMINANCE = 1;
+
 export function contrastText(color: string): string {
   const rgb = parseColor(color);
-  if (!rgb) return '#ffffff';
-  const [r, g, b] = rgb;
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.6 ? '#1f2937' : '#ffffff';
+  if (!rgb) return INK_LIGHT;
+  const background = relativeLuminance(rgb);
+  const onDark = contrastRatio(background, INK_DARK_LUMINANCE);
+  const onLight = contrastRatio(background, INK_LIGHT_LUMINANCE);
+  return onDark > onLight ? INK_DARK : INK_LIGHT;
 }

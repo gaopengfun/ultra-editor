@@ -27,11 +27,21 @@ describe('contrastText', () => {
     expect(contrastText('rgb(17 17 17)')).toBe(LIGHT);
   });
 
-  // Grey channels weigh out to exactly value/255, which pins the 0.6 cut-off:
-  // #999 is 153/255 = 0.6 (not greater), #9a9a9a is one step over it.
-  it('treats a luminance of exactly 0.6 as dark and anything above it as light', () => {
-    expect(contrastText('#999999')).toBe(LIGHT);
-    expect(contrastText('#9a9a9a')).toBe(DARK);
+  // The mid-tones are where a brightness guess and a real contrast measurement
+  // disagree. Every one of these reads under 4:1 against white and over 4.4:1
+  // against the dark ink, so white text on them is the unreadable choice.
+  it('picks the more readable ink for mid-tone fills, not the brighter-looking one', () => {
+    expect(contrastText('#51a5dc')).toBe(DARK);
+    expect(contrastText('#ca8a04')).toBe(DARK);
+    expect(contrastText('#16a34a')).toBe(DARK);
+    expect(contrastText('#ea580c')).toBe(DARK);
+  });
+
+  // Greys cross over where the two inks are equally readable — around 3.8:1
+  // each. One 8-bit step either side of the crossing flips the answer.
+  it('switches ink at the point where the two contrast ratios cross', () => {
+    expect(contrastText('#828282')).toBe(LIGHT);
+    expect(contrastText('#838383')).toBe(DARK);
   });
 
   it('falls back to white text for a colour it cannot parse', () => {
