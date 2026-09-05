@@ -53,6 +53,8 @@ const html = ref('<p>开始写点什么…</p>');
 
 Markdown 是双向的：工具栏可以切到源码模式直接写 Markdown，粘贴 Markdown 会自动转成富文本，`getMarkdown()` / `setMarkdown()` 随时进出。转换是针对本编辑器 schema 手写的，没有引第三方 Markdown 依赖。
 
+文档上万字之后记得设 `debounce`。`v-model` 的契约要求每次更新都把整篇文档序列化成 HTML，157 KB 的文档单次约 9.7 ms —— 默认每敲一个字符就付一次，输入会开始发涩。`:debounce="150"` 就够了，代价只是 `v-model` 延后这么久更新；卸载前和进源码模式前都会立刻冲刷，不会丢。详见 [API 参考](./docs/api.md#大文档请设置-debounce)。
+
 ## 接上 AI
 
 AI 的全部契约就是一个 `stream` 方法：
@@ -113,6 +115,20 @@ type UploadHandler = (file: Blob, filename?: string) => Promise<string>;
 
 支持点击工具栏、**粘贴**、**拖拽** 三种方式插入图片。插入后右击图片可以旋转 / 裁切 / 对齐 / 加图注，选中后八个锚点可拖拽缩放。
 
+## 界面语言
+
+内置简体中文和英文，默认中文：
+
+```vue
+<UltraEditor v-model="html" locale="en" />
+```
+
+只想改其中几句、不想整包换语言的话，`messages` 可以逐条覆盖，不必 fork 语言包：
+
+```vue
+<UltraEditor v-model="html" :messages="{ 'toolbar.bold': '加粗文字' }" />
+```
+
 ## 主题定制
 
 所有样式变量都以 `--ue-` 开头且自带兜底值，覆盖即换肤：
@@ -162,7 +178,7 @@ import '@ultra-editor/core/content.css'; // 只要内容样式，不含编辑器
 ```bash
 pnpm install
 pnpm dev          # 启动 playground（含模拟 AI，无需 API Key）
-pnpm verify       # lint + type-check + test + build
+pnpm verify       # 格式 + lint + 类型 + 测试（100% 覆盖率闸门）+ 构建 + 产物冒烟
 ```
 
 ## 包结构
@@ -171,6 +187,8 @@ pnpm verify       # lint + type-check + test + build
 | -------------------- | --------------------------------------------------------------------------------------- |
 | `@ultra-editor/core` | 框架无关：Tiptap 扩展、AI 引擎、样式表。React / Svelte 适配器可直接复用                 |
 | `@ultra-editor/vue`  | Vue 3 组件层：`UltraEditor.vue` + 零依赖 UI（对话框 / toast / 取色器 / 裁切器全部自建） |
+
+core 还有一个 `@ultra-editor/core/lean` 入口：不预置任何代码高亮语言，语言集完全由你注册。Vue 组件走的正是这个入口，`common` 语言集是挂载后异步补进来的 —— 所以主包里没有那几百 KB 语法解析器。
 
 ## License
 
