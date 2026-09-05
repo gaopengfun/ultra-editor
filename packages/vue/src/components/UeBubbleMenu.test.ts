@@ -97,9 +97,13 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
     this: HTMLElement
   ) {
-    return this.classList?.contains('ue-bubble')
-      ? ({ width: 200, height: 40, left: 0, top: 0, right: 200, bottom: 40 } as DOMRect)
-      : measure.call(this);
+    if (this.classList?.contains('ue-bubble')) {
+      return { width: 200, height: 40, left: 0, top: 0, right: 200, bottom: 40 } as DOMRect;
+    }
+    if (this.getAttribute?.('role') === 'menu') {
+      return { width: 160, height: 310, left: 0, top: 0, right: 160, bottom: 310 } as DOMRect;
+    }
+    return measure.call(this);
   });
   mountBubble();
 });
@@ -298,6 +302,54 @@ describe('AI menu', () => {
     expect(document.body.querySelector('.ue-bubble .ue-menu')?.getAttribute('role')).toBe('menu');
     expect(menuItems().every((item) => item.getAttribute('role') === 'menuitem')).toBe(true);
     expect(menuItems().map((item) => item.textContent?.trim())).toEqual(['润色', '翻译']);
+  });
+
+  // The bubble is `position: fixed`, so a task list hanging off the bottom of the
+  // window cannot be scrolled to — the tasks below the fold are simply gone.
+  it('opens the task list upwards when it would not fit below', async () => {
+    wrapper.unmount();
+    editor.destroy();
+    mountBubble({ hasAI: true });
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({
+      left: 200,
+      right: 210,
+      top: 700,
+      bottom: 720
+    });
+    await select(1, 3);
+    await nextTick();
+
+    press(aiButton());
+    await nextTick();
+    await nextTick();
+    await nextTick();
+
+    const menu = document.body.querySelector<HTMLElement>('.ue-bubble .ue-menu');
+    expect(menu?.style.bottom).toBe('calc(100% + 6px)');
+    expect(menu?.style.top).toBe('');
+  });
+
+  it('keeps the task list below the bubble when there is room for it', async () => {
+    wrapper.unmount();
+    editor.destroy();
+    mountBubble({ hasAI: true });
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({
+      left: 200,
+      right: 210,
+      top: 100,
+      bottom: 120
+    });
+    await select(1, 3);
+    await nextTick();
+
+    press(aiButton());
+    await nextTick();
+    await nextTick();
+    await nextTick();
+
+    const menu = document.body.querySelector<HTMLElement>('.ue-bubble .ue-menu');
+    expect(menu?.style.top).toBe('calc(100% + 6px)');
+    expect(menu?.style.bottom).toBe('');
   });
 
   it('hands the picked task to the host and gets out of the way', async () => {

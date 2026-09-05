@@ -21,7 +21,9 @@ const emit = defineEmits<{ (e: 'ai', task: AITask): void }>();
 const visible = ref(false);
 const rect = ref({ left: 0, top: 0 });
 const menuOpen = ref(false);
+const menuAbove = ref(false);
 const root = ref<HTMLElement>();
+const taskMenu = ref<HTMLElement>();
 
 const TASK_LABEL: Record<string, MessageKey> = {
   improve: 'ai.improve',
@@ -84,6 +86,33 @@ function update() {
     rect.value = positionFor(start, end, box);
   });
 }
+
+/**
+ * Hang the task list off whichever side of the bubble has room for it.
+ *
+ * The bubble is `position: fixed`, so a list that runs past the bottom of the
+ * window cannot be scrolled into view — with ten tasks it is tall enough that a
+ * selection in the lower half of a phone-sized window puts half of them out of
+ * reach for good.
+ */
+watch(menuOpen, (open) => {
+  if (!open) {
+    menuAbove.value = false;
+    return;
+  }
+  void nextTick(() => {
+    // Opening the list is what schedules this, and `update()` keeps the bubble
+    // mounted for as long as the list is open — so the element is always here by
+    // the time the tick runs. Unmounting cancels the watcher job outright rather
+    // than arriving here with nothing to measure.
+    const el = taskMenu.value;
+    /* v8 ignore next */
+    if (!el) return;
+    const height = el.getBoundingClientRect().height;
+    const fitsBelow = rect.value.top + box.height + GAP + height <= window.innerHeight;
+    menuAbove.value = !fitsBelow && rect.value.top - GAP - height >= GAP;
+  });
+});
 
 function pick(task: AITask) {
   menuOpen.value = false;
@@ -182,9 +211,14 @@ onBeforeUnmount(() => {
 
       <div
         v-if="menuOpen"
+        ref="taskMenu"
         class="ue-menu"
         role="menu"
-        :style="{ left: '0', top: 'calc(100% + 6px)', position: 'absolute' }"
+        :style="
+          menuAbove
+            ? { left: '0', bottom: 'calc(100% + 6px)', position: 'absolute' }
+            : { left: '0', top: 'calc(100% + 6px)', position: 'absolute' }
+        "
       >
         <button
           v-for="task in aiTasks"
