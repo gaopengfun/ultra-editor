@@ -17,14 +17,29 @@ const emit = defineEmits<{
 }>();
 
 const panel = ref<HTMLElement>();
+const body = ref<HTMLElement>();
 const titleId = `ue-dialog-title-${(seq += 1)}`;
 let lastFocused: HTMLElement | null = null;
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-function focusables(): HTMLElement[] {
-  return panel.value ? Array.from(panel.value.querySelectorAll<HTMLElement>(FOCUSABLE)) : [];
+function focusables(root?: HTMLElement): HTMLElement[] {
+  const scope = root ?? panel.value;
+  return scope ? Array.from(scope.querySelectorAll<HTMLElement>(FOCUSABLE)) : [];
+}
+
+/**
+ * Where the caret goes when the dialog opens.
+ *
+ * Not `focusables()[0]`: the close button sits in the header, so in DOM order it
+ * is always first, and a dialog that opens with focus on its own dismiss control
+ * eats the user's first keystroke and closes on the first Enter. The content is
+ * what the dialog was opened to fill in, so it gets the caret; a dialog with
+ * nothing focusable in its body falls back to the close button, then the panel.
+ */
+function initialFocus(): HTMLElement | undefined {
+  return focusables(body.value)[0] ?? focusables()[0] ?? panel.value;
 }
 
 function close() {
@@ -66,7 +81,7 @@ watch(
     if (open) {
       lastFocused = document.activeElement as HTMLElement | null;
       window.addEventListener('keydown', onKey, true);
-      void nextTick(() => (focusables()[0] ?? panel.value)?.focus());
+      void nextTick(() => initialFocus()?.focus());
     } else {
       window.removeEventListener('keydown', onKey, true);
       // Hand focus back to whatever opened the dialog.
@@ -112,7 +127,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true));
           </button>
         </header>
 
-        <div class="ue-dialog__body">
+        <div ref="body" class="ue-dialog__body">
           <slot />
         </div>
 
