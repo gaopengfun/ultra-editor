@@ -845,7 +845,7 @@ describe('text colour', () => {
 
     await wrapper.get('.ue-color-trigger').trigger('click');
     Array.from(document.body.querySelectorAll<HTMLButtonElement>('.ue-color-actions .ue-btn'))
-      .find((entry) => entry.textContent?.trim() === '清除底色')
+      .find((entry) => entry.textContent?.trim() === '清除颜色')
       ?.click();
     await flush();
 

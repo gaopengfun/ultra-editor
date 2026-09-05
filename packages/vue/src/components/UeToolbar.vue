@@ -119,7 +119,7 @@ const insertTable = ({ rows, cols }: { rows: number; cols: number }) =>
       <UeColorPicker
         :model-value="color"
         :title="t('toolbar.color')"
-        :clear-label="t('table.clearColor')"
+        :clear-label="t('toolbar.clearColor')"
         :t="t"
         @update:model-value="emit('color', $event)"
         @clear="emit('clear-color')"

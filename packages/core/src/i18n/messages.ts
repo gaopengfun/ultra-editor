@@ -9,6 +9,9 @@ export const zhCN = {
   'toolbar.strike': '删除线',
   'toolbar.code': '行内代码',
   'toolbar.color': '文字颜色',
+  // Distinct from `table.clearColor`: this palette sets the colour of the text,
+  // the table one sets a cell's background. They are not the same action.
+  'toolbar.clearColor': '清除颜色',
   'toolbar.bulletList': '无序列表',
   'toolbar.orderedList': '有序列表',
   'toolbar.blockquote': '引用',
@@ -149,6 +152,7 @@ export const en: Messages = {
   'toolbar.strike': 'Strikethrough',
   'toolbar.code': 'Inline code',
   'toolbar.color': 'Text color',
+  'toolbar.clearColor': 'Clear color',
   'toolbar.bulletList': 'Bullet list',
   'toolbar.orderedList': 'Ordered list',
   'toolbar.blockquote': 'Blockquote',
