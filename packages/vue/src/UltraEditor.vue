@@ -216,10 +216,12 @@ function orderSlashItems(items: SlashItem[]): SlashItem[] {
   return GROUP_ORDER.flatMap((group) => items.filter((item) => item.group === group));
 }
 
+// Just the caret anchor. Keeping it inside the viewport is the palette's own
+// job — it is the only one that knows how tall it currently is.
 function placeSlash(rect: DOMRect | null | undefined) {
   if (!rect) return;
-  slash.x = Math.min(rect.left, window.innerWidth - 280);
-  slash.y = Math.min(rect.bottom + 6, window.innerHeight - 320);
+  slash.x = rect.left;
+  slash.y = rect.bottom + 6;
 }
 
 // Opening and refiltering do the same work; only opening also raises the menu.

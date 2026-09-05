@@ -6,6 +6,30 @@ export interface FloatingAnchor {
 }
 
 /**
+ * Nudge a measured box back inside the viewport.
+ *
+ * Takes the box's real size rather than an assumed one: surfaces here grow with
+ * their contents — the slash palette gains a whole group when an AI provider is
+ * wired up — so a constant guessed at the call site is wrong for half the states
+ * the surface can be in, and wrong silently.
+ */
+export function clampToViewport(
+  anchor: FloatingAnchor,
+  rect: { width: number; height: number },
+  gap = 8
+): { left: number; top: number } {
+  let left = anchor.x;
+  let top = anchor.y;
+  if (left + rect.width + gap > window.innerWidth) {
+    left = Math.max(gap, window.innerWidth - rect.width - gap);
+  }
+  if (top + rect.height + gap > window.innerHeight) {
+    top = Math.max(gap, window.innerHeight - rect.height - gap);
+  }
+  return { left, top };
+}
+
+/**
  * Position a floating element at a viewport point, clamped inside the viewport,
  * and close it on the usual escape hatches.
  *
@@ -28,18 +52,7 @@ export function useFloating(
     const el = element.value;
     if (!el) return;
 
-    const gap = 8;
-    const rect = el.getBoundingClientRect();
-    let left = anchor.value.x;
-    let top = anchor.value.y;
-
-    if (left + rect.width + gap > window.innerWidth) {
-      left = Math.max(gap, window.innerWidth - rect.width - gap);
-    }
-    if (top + rect.height + gap > window.innerHeight) {
-      top = Math.max(gap, window.innerHeight - rect.height - gap);
-    }
-    position.value = { left, top };
+    position.value = clampToViewport(anchor.value, el.getBoundingClientRect());
   }
 
   // A flyout opened *from* a floating surface (the table menu's colour panel) is
