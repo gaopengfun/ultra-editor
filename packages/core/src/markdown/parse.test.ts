@@ -48,6 +48,23 @@ describe('inline markdown', () => {
     expect(inlineToHTML('[a](<https://x.com/a b>)')).toBe('<a href="https://x.com/a b">a</a>');
   });
 
+  // CommonMark lets a bare destination hold parentheses as long as they pair up.
+  // Wikipedia and MSDN both put them in URLs, so stopping at the first `)` cuts
+  // the link short and drops the tail into the paragraph as loose text.
+  it('keeps balanced parentheses inside a bare URL', () => {
+    expect(inlineToHTML('[a](https://x.com/a(b))')).toBe('<a href="https://x.com/a(b)">a</a>');
+    expect(inlineToHTML('[a](https://en.wikipedia.org/wiki/Ruby_(programming_language))')).toBe(
+      '<a href="https://en.wikipedia.org/wiki/Ruby_(programming_language)">a</a>'
+    );
+    expect(inlineToHTML('![alt](https://x.com/a(b).png)')).toBe(
+      '<img src="https://x.com/a(b).png" alt="alt">'
+    );
+  });
+
+  it('still ends a bare URL at the first unpaired closing parenthesis', () => {
+    expect(inlineToHTML('[a](https://x.com/a)b)')).toBe('<a href="https://x.com/a">a</a>b)');
+  });
+
   it('leaves a link whose text is a code span intact', () => {
     expect(inlineToHTML('[`x`](https://x.com)')).toBe('<a href="https://x.com"><code>x</code></a>');
   });

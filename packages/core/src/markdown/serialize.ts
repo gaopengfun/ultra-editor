@@ -43,6 +43,33 @@ function escapeLeading(line: string): string {
 }
 
 /**
+ * A link destination in the form the parser reads back as the same URL.
+ *
+ * A bare destination carries no whitespace, and carries parentheses only while
+ * they pair up — written bare, `https://x.com/a b` and `https://x.com/a(b` both
+ * read back as literal text and the link is gone, while `https://x.com/a)b`
+ * comes back truncated with its tail loose in the paragraph. `<...>` is the
+ * escape hatch for all three.
+ *
+ * The depth ceiling mirrors the parser's: it reads two levels of nesting, so
+ * anything deeper has to be wrapped for the round trip to hold.
+ */
+function destination(url: string): string {
+  let depth = 0;
+  let deepest = 0;
+  let unbalanced = false;
+  for (const char of url) {
+    if (char === '(') deepest = Math.max(deepest, ++depth);
+    else if (char === ')' && --depth < 0) unbalanced = true;
+  }
+  const bareSurvives = !/\s/.test(url) && !unbalanced && depth === 0 && deepest <= 2;
+  // An angle-wrapped destination cannot carry an angle bracket of its own, and
+  // the parser reads no escapes inside one — such a URL has no form that round
+  // trips, so it goes out bare rather than wrapped into something worse.
+  return bareSurvives || /[<>]/.test(url) ? url : `<${url}>`;
+}
+
+/**
  * Wrap text in one mark's delimiters.
  *
  * `code` is terminal: Markdown has no way to bold the inside of a code span, so
@@ -61,7 +88,7 @@ function applyMark(mark: Mark, text: string): string {
       // A link mark without an href is a link to nowhere; `[text]()` would only
       // read back as broken syntax, so the text goes out on its own.
       const href = mark.attrs.href as string | null;
-      return href ? `[${text}](${href})` : text;
+      return href ? `[${text}](${destination(href)})` : text;
     }
     default:
       // underline, textStyle (colour), and anything a host added: Markdown has no
@@ -117,7 +144,7 @@ function imageMarkdown(node: ProseMirrorNode): string {
   const src = (node.attrs.src as string | null) ?? '';
   const alt = ((node.attrs.caption ?? node.attrs.alt) as string | null) ?? '';
   const title = node.attrs.title as string | null;
-  return `![${escapeInline(alt)}](${src}${title ? ` "${title}"` : ''})`;
+  return `![${escapeInline(alt)}](${destination(src)}${title ? ` "${title}"` : ''})`;
 }
 
 /**

@@ -46,8 +46,27 @@ class Frozen {
 
 const BACKSLASH_ESCAPE = /\\([\\`*_{}[\]()#+\-.!>~|])/g;
 const CODE_SPAN = /(?<!\\)(`+)([^`]|[\s\S]*?[^`])\1(?!`)/g;
-const IMAGE = /!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]*)(?:\s+"([^"]*)")?\s*\)/g;
-const LINK = /\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]*)(?:\s+"([^"]*)")?\s*\)/g;
+/**
+ * A bare link destination.
+ *
+ * CommonMark allows parentheses in one as long as they pair up, which is the
+ * only reason `.../Ruby_(programming_language)` survives being written down.
+ * Ending at the first `)` instead truncates the URL and spills its tail into the
+ * paragraph. Backslash-escaped parens never reach here — `BACKSLASH_ESCAPE` has
+ * already parked them as placeholders by the time links are scanned.
+ *
+ * Two levels of nesting, not arbitrary depth: a regex cannot count, and no real
+ * URL nests deeper. Anything past that ends at the first unpaired `)`, exactly
+ * as it does today. The two alternatives start on different characters, so the
+ * engine never has a choice to backtrack over.
+ */
+const CHAR = String.raw`[^\s()]`;
+const NESTED = String.raw`\((?:${CHAR}|\(${CHAR}*\))*\)`;
+const DEST = String.raw`(?:${CHAR}|${NESTED})*`;
+const TAIL = String.raw`(?:\s+"([^"]*)")?\s*\)`;
+
+const IMAGE = new RegExp(String.raw`!\[([^\]]*)\]\(\s*(<[^>]*>|${DEST})${TAIL}`, 'g');
+const LINK = new RegExp(String.raw`\[([^\]]*)\]\(\s*(<[^>]*>|${DEST})${TAIL}`, 'g');
 
 /** `<...>` is the escape hatch for a URL containing spaces or parentheses. */
 const bareUrl = (url: string) =>

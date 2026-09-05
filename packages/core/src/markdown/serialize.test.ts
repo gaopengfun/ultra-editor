@@ -85,6 +85,23 @@ describe('document to markdown', () => {
     expect(markdown).toBe('文字');
   });
 
+  // A bare destination cannot hold whitespace, and can only hold parentheses
+  // that pair up. Written bare, each of these reads back as literal text or as a
+  // truncated URL — the link is lost on the way through source mode.
+  it('wraps a URL that a bare destination could not carry', () => {
+    expect(toMarkdown('<p><a href="https://x.com/a b">t</a></p>')).toBe('[t](<https://x.com/a b>)');
+    expect(toMarkdown('<p><a href="https://x.com/a(b">t</a></p>')).toBe('[t](<https://x.com/a(b>)');
+    expect(toMarkdown('<p><a href="https://x.com/a)b">t</a></p>')).toBe('[t](<https://x.com/a)b>)');
+    expect(toMarkdown('<p><img src="https://x.com/a b.png" alt="a"></p>')).toBe(
+      '![a](<https://x.com/a b.png>)'
+    );
+  });
+
+  it('leaves a URL with balanced parentheses bare', () => {
+    expect(toMarkdown('<p><a href="https://x.com/a(b)">t</a></p>')).toBe('[t](https://x.com/a(b))');
+    expect(toMarkdown('<p><a href="https://x.com/a">t</a></p>')).toBe('[t](https://x.com/a)');
+  });
+
   it('pads a row that a merged cell left short', () => {
     const html =
       '<table><tbody><tr><th><p>甲</p></th><th><p>乙</p></th></tr>' +
