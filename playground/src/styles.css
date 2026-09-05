@@ -156,7 +156,10 @@ body {
   border-top: 1px dashed rgb(128 128 128 / 35%);
 }
 
-.pg-preview h2 {
+/* Direct child only: a descendant selector here also hits the headings inside
+   the .ue-content sample below, which is the one thing this section exists to
+   show rendering exactly as it does in the editor. */
+.pg-preview > h2 {
   font-size: 15px;
   opacity: 0.6;
 }
