@@ -229,6 +229,41 @@ describe('code block language picker', () => {
     expect(option('nginx')).toBeDefined();
   });
 
+  // `listLanguages` returns grammar *names*, and highlight.js files TOML under
+  // `ini` and HTML under `xml`. Without them the picker makes a TOML author
+  // label their block "INI".
+  it('offers the aliases highlight.js resolves but never lists', () => {
+    trigger().click();
+    const labels = options().map((item) => item.textContent);
+
+    expect(labels).toContain('TOML');
+    expect(labels).toContain('HTML');
+    // Sorted by display name, not by the id they arrive under.
+    expect(labels.indexOf('HTML')).toBeLessThan(labels.indexOf('INI'));
+    expect(labels.indexOf('TOML')).toBeGreaterThan(labels.indexOf('SQL'));
+  });
+
+  it('highlights a block that picked an alias', () => {
+    editor.commands.setContent('<pre><code>title = "x"</code></pre>');
+    trigger().click();
+    option('TOML').click();
+
+    // The whole point of offering it: `toml` has no grammar of its own, so this
+    // only paints if the id reaches `lowlight.highlight` instead of being taken
+    // for an unregistered language and left to the disabled guesser.
+    expect(editor.getHTML()).toContain('data-language="toml"');
+    expect(code().querySelector('[class*="hljs"]')).not.toBeNull();
+
+    // The other alias resolves through a different grammar, so it is a separate
+    // claim: `html` only paints if it reaches `xml`.
+    editor.commands.setContent('<pre><code>&lt;b&gt;x&lt;/b&gt;</code></pre>');
+    trigger().click();
+    option('HTML').click();
+
+    expect(editor.getHTML()).toContain('data-language="html"');
+    expect(code().querySelector('[class*="hljs"]')).not.toBeNull();
+  });
+
   it('announces itself as an expanded listbox while open', () => {
     expect(trigger().getAttribute('aria-expanded')).toBe('false');
 
@@ -428,6 +463,19 @@ describe('code block language catalogue', () => {
     // close and a reopen.
     expect(option('Rust')).toBeDefined();
     expect(menu()).not.toBeNull();
+  });
+
+  it('offers no alias the registry cannot paint', () => {
+    const lowlight = createLowlight();
+    lowlight.register('rust', common.rust);
+    editor.destroy();
+    editor = makeLeanEditor('<pre><code>x</code></pre>', lowlight);
+
+    trigger().click();
+
+    // `ini` and `xml` are not in this registry, so TOML and HTML would be
+    // choices that paint nothing — worse than never offering them.
+    expect(options().map((item) => item.textContent)).toEqual(['PlainText', 'Rust']);
   });
 
   it('registers the common set on demand', async () => {

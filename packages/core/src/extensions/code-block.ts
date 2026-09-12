@@ -60,7 +60,8 @@ const LANGUAGE_LABELS: Record<string, string> = {
   diff: 'Diff',
   go: 'Go',
   graphql: 'GraphQL',
-  ini: 'INI / TOML',
+  ini: 'INI',
+  toml: 'TOML',
   java: 'Java',
   javascript: 'JavaScript',
   json: 'JSON',
@@ -83,12 +84,25 @@ const LANGUAGE_LABELS: Record<string, string> = {
   typescript: 'TypeScript',
   vbnet: 'VB.NET',
   wasm: 'WebAssembly',
-  xml: 'HTML / XML',
+  xml: 'XML',
+  html: 'HTML',
   yaml: 'YAML'
 };
 
 /** Variants of a language that only add noise to a picker. */
 const HIDDEN_LANGUAGES = new Set(['plaintext', 'php-template', 'python-repl']);
+
+/**
+ * Aliases highlight.js resolves but never lists.
+ *
+ * `listLanguages` returns registered grammar *names*, and highlight.js files
+ * TOML under `ini` and HTML under `xml` — so neither can reach the picker on its
+ * own, while `highlight('toml', …)` paints perfectly well. Left out, the picker
+ * makes a TOML author label their block "INI". The highlighting is identical
+ * either way; the id and the label are the whole difference, and they are what
+ * the author meant.
+ */
+const LANGUAGE_ALIASES = ['toml', 'html'];
 
 const labelOf = (id: string) => LANGUAGE_LABELS[id] ?? id;
 
@@ -212,15 +226,25 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
     const fallback: Translator = createTranslator(this.options.locale, this.options.messages);
     const t = () => this.options.translator?.() ?? fallback;
     const prefix = this.options.languageClassPrefix;
-    const lowlight = this.options.lowlight as { listLanguages: () => string[] };
+    const lowlight = this.options.lowlight as {
+      listLanguages: () => string[];
+      registered: (id: string) => boolean;
+    };
     // Read per open, not once at construction: the default language set is
     // fetched after the editor exists, and a catalogue frozen here would stay
     // empty for the lifetime of the document.
-    const listLanguages = () =>
-      lowlight
-        .listLanguages()
-        .filter((id) => !HIDDEN_LANGUAGES.has(id))
-        .sort((a, b) => labelOf(a).localeCompare(labelOf(b)));
+    //
+    // A Set, so an alias that highlight.js one day promotes to a grammar of its
+    // own lands in the list once rather than twice. Each one is gated on being
+    // registered: a host that brings its own language set must never be offered
+    // a choice that paints nothing.
+    const listLanguages = () => {
+      const ids = new Set(lowlight.listLanguages().filter((id) => !HIDDEN_LANGUAGES.has(id)));
+      LANGUAGE_ALIASES.forEach((id) => {
+        if (lowlight.registered(id)) ids.add(id);
+      });
+      return [...ids].sort((a, b) => labelOf(a).localeCompare(labelOf(b)));
+    };
 
     return ({ editor, node, getPos }) => {
       const dom = document.createElement('div');
