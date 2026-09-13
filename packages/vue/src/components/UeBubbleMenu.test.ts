@@ -90,12 +90,29 @@ async function select(from: number, to: number) {
 
 beforeEach(() => {
   document.body.innerHTML = '';
+  vi.stubGlobal('innerWidth', 1000);
+  vi.stubGlobal('innerHeight', 800);
+  // The bubble has to have a size for its own placement math to mean anything.
+  const measure = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+    this: HTMLElement
+  ) {
+    if (this.classList?.contains('ue-bubble')) {
+      return { width: 200, height: 40, left: 0, top: 0, right: 200, bottom: 40 } as DOMRect;
+    }
+    if (this.getAttribute?.('role') === 'menu') {
+      return { width: 160, height: 310, left: 0, top: 0, right: 160, bottom: 310 } as DOMRect;
+    }
+    return measure.call(this);
+  });
   mountBubble();
 });
 
 afterEach(() => {
   wrapper.unmount();
   editor.destroy();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('visibility', () => {
@@ -142,9 +159,26 @@ describe('visibility', () => {
     );
 
     await select(1, 3);
+    await nextTick();
 
-    expect(bubble()?.style.left).toBe('250px');
-    expect(bubble()?.style.top).toBe('88px');
+    // Midpoint 250 less half of a 200-wide bubble; 100 less its height and the gap.
+    expect(bubble()?.style.left).toBe('150px');
+    expect(bubble()?.style.top).toBe('52px');
+  });
+
+  // Drawn above the selection, a bubble anchored to the first visible line hangs
+  // off the top of the window where none of its buttons can be reached.
+  it('flips below the selection when there is no room above it', async () => {
+    vi.spyOn(editor.view, 'coordsAtPos').mockImplementation((pos) =>
+      pos === 1
+        ? { left: 200, right: 210, top: 20, bottom: 36 }
+        : { left: 300, right: 310, top: 20, bottom: 36 }
+    );
+
+    await select(1, 3);
+    await nextTick();
+
+    expect(bubble()?.style.top).toBe('44px');
   });
 
   it('keeps itself inside the viewport when the selection sits at the very edge', async () => {
@@ -156,9 +190,60 @@ describe('visibility', () => {
     });
 
     await select(1, 3);
+    await nextTick();
 
-    expect(bubble()?.style.left).toBe('12px');
-    expect(bubble()?.style.top).toBe('12px');
+    expect(bubble()?.style.left).toBe('8px');
+    expect(bubble()?.style.top).toBe('28px');
+  });
+
+  // The editor can be torn down with a selection still live, between the bubble
+  // being drawn at the selection and being measured.
+  it('gives up measuring itself if it is torn down first', async () => {
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({
+      left: 200,
+      right: 210,
+      top: 300,
+      bottom: 320
+    });
+
+    editor.view.dom.focus();
+    editor.commands.setTextSelection({ from: 1, to: 3 });
+    wrapper.unmount();
+    await nextTick();
+    await nextTick();
+
+    expect(bubble()).toBeNull();
+  });
+
+  it('pulls itself off the right edge rather than overflowing it', async () => {
+    vi.stubGlobal('innerWidth', 400);
+    vi.spyOn(editor.view, 'coordsAtPos').mockImplementation((pos) =>
+      pos === 1
+        ? { left: 380, right: 385, top: 300, bottom: 320 }
+        : { left: 390, right: 395, top: 300, bottom: 320 }
+    );
+
+    await select(1, 3);
+    await nextTick();
+
+    // 400 − 200 wide − 8 gap.
+    expect(bubble()?.style.left).toBe('192px');
+  });
+});
+
+describe('measurement', () => {
+  it('measures the selection once per transaction, not once per event it fires', async () => {
+    await select(1, 3);
+
+    const coordsAtPos = vi.spyOn(editor.view, 'coordsAtPos');
+    // A selection that genuinely moves — `selectionUpdate` only fires when it did.
+    await select(2, 3);
+
+    // Two positions — the selection's start and its end. Tiptap emits `transaction`
+    // for every dispatch and `selectionUpdate` on top of it whenever the selection
+    // moved, so listening to both makes the bubble re-measure the same transaction
+    // twice, and every measurement forces layout.
+    expect(coordsAtPos).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -217,6 +302,54 @@ describe('AI menu', () => {
     expect(document.body.querySelector('.ue-bubble .ue-menu')?.getAttribute('role')).toBe('menu');
     expect(menuItems().every((item) => item.getAttribute('role') === 'menuitem')).toBe(true);
     expect(menuItems().map((item) => item.textContent?.trim())).toEqual(['润色', '翻译']);
+  });
+
+  // The bubble is `position: fixed`, so a task list hanging off the bottom of the
+  // window cannot be scrolled to — the tasks below the fold are simply gone.
+  it('opens the task list upwards when it would not fit below', async () => {
+    wrapper.unmount();
+    editor.destroy();
+    mountBubble({ hasAI: true });
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({
+      left: 200,
+      right: 210,
+      top: 700,
+      bottom: 720
+    });
+    await select(1, 3);
+    await nextTick();
+
+    press(aiButton());
+    await nextTick();
+    await nextTick();
+    await nextTick();
+
+    const menu = document.body.querySelector<HTMLElement>('.ue-bubble .ue-menu');
+    expect(menu?.style.bottom).toBe('calc(100% + 6px)');
+    expect(menu?.style.top).toBe('');
+  });
+
+  it('keeps the task list below the bubble when there is room for it', async () => {
+    wrapper.unmount();
+    editor.destroy();
+    mountBubble({ hasAI: true });
+    vi.spyOn(editor.view, 'coordsAtPos').mockReturnValue({
+      left: 200,
+      right: 210,
+      top: 100,
+      bottom: 120
+    });
+    await select(1, 3);
+    await nextTick();
+
+    press(aiButton());
+    await nextTick();
+    await nextTick();
+    await nextTick();
+
+    const menu = document.body.querySelector<HTMLElement>('.ue-bubble .ue-menu');
+    expect(menu?.style.top).toBe('calc(100% + 6px)');
+    expect(menu?.style.bottom).toBe('');
   });
 
   it('hands the picked task to the host and gets out of the way', async () => {

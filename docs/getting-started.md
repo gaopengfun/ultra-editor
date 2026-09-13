@@ -2,6 +2,9 @@
 
 ## 安装
 
+> **⚠️ 尚未发布到 npm。** 下面的命令要等首次发布之后才可用。现在想试，请 clone 仓库后跑
+> `pnpm install && pnpm dev`。
+
 ```bash
 pnpm add @ultra-editor/vue
 ```

@@ -75,6 +75,16 @@ describe('UePrompt', () => {
     expect(input()?.selectionEnd).toBe('https://old.example.com'.length);
   });
 
+  // `select()` sets a range whether or not the field has focus, so the assertion
+  // above passes even when something else holds the caret. Only the active
+  // element proves a typed character actually lands in the box.
+  it('leaves the caret in the field, not on the close button', async () => {
+    render();
+    await open({ title: '插入链接', placeholder: 'https://' });
+
+    expect(document.activeElement).toBe(input());
+  });
+
   it('resolves with the typed value on confirm and closes', async () => {
     render();
     const { settled } = await open({ title: '插入链接' });

@@ -12,6 +12,7 @@ import {
 } from 'vue';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import type { EditorView } from '@tiptap/pm/view';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { CellSelection } from '@tiptap/pm/tables';
 import {
   createLowlight,
@@ -90,6 +91,26 @@ const upload = computed(() =>
 const provider = computed(() => props.ai?.provider ?? null);
 const hasAI = computed(() => !!provider.value);
 
+/**
+ * Every selection task, in menu order — the bubble's default when the host names
+ * none. Built once here rather than spelled out in the template: this component
+ * re-renders on every transaction, and an array built there would arrive at the
+ * bubble as a new prop each time, re-running its filtering for an unchanged list.
+ */
+const ALL_AI_TASKS: AITask[] = [
+  'improve',
+  'translate',
+  'summarize',
+  'rewrite',
+  'expand',
+  'shorten',
+  'fixGrammar',
+  'changeTone',
+  'custom'
+];
+
+const aiTasks = computed(() => props.ai?.tasks ?? ALL_AI_TASKS);
+
 /* Syntax highlighting -------------------------------------------------------- */
 
 // A host that passes `lowlight` owns the language set outright — we neither add
@@ -126,15 +147,26 @@ function applySource() {
   const instance = editor.value;
   /* v8 ignore next */
   if (!instance) return;
-  const html = markdownToHTML(source.value);
-  if (html === instance.getHTML()) return;
-  instance.commands.setContent(html);
+  // Compared as Markdown, which is the one representation both sides share.
+  // Comparing the HTML instead never matches: `markdownToHTML` writes tight list
+  // items (`<li>text</li>`) where ProseMirror writes `<li><p>text</p></li>`, so
+  // the guard never fired and leaving source mode always wrote the document back
+  // — and a write is a document change, which is enough for the trailing-node
+  // plugin to append a paragraph nobody typed to anything ending in a list,
+  // quote, table or code block.
+  if (docToMarkdown(instance.state.doc) === source.value) return;
+  instance.commands.setContent(markdownToHTML(source.value));
 }
 
 function toggleSourceMode() {
   const instance = editor.value;
   /* v8 ignore next */
   if (!instance) return;
+  // A debounced apply describes markdown that is about to stop being the source of
+  // truth. Left running, it lands after the author is back in the document and
+  // overwrites everything they have typed since — the exit path applies the
+  // textarea itself, so the pending timer has nothing left to contribute.
+  clearTimeout(sourceTimer);
   if (sourceMode.value) {
     applySource();
     sourceMode.value = false;
@@ -184,10 +216,12 @@ function orderSlashItems(items: SlashItem[]): SlashItem[] {
   return GROUP_ORDER.flatMap((group) => items.filter((item) => item.group === group));
 }
 
+// Just the caret anchor. Keeping it inside the viewport is the palette's own
+// job — it is the only one that knows how tall it currently is.
 function placeSlash(rect: DOMRect | null | undefined) {
   if (!rect) return;
-  slash.x = Math.min(rect.left, window.innerWidth - 280);
-  slash.y = Math.min(rect.bottom + 6, window.innerHeight - 320);
+  slash.x = rect.left;
+  slash.y = rect.bottom + 6;
 }
 
 // Opening and refiltering do the same work; only opening also raises the menu.
@@ -392,15 +426,83 @@ watch(
 
 /* Word count ----------------------------------------------------------------- */
 
+/**
+ * JavaScript's `\s`, as code points.
+ *
+ * Spelled out because the counter walks the text by char code — running a regex
+ * would mean handing the whole document back to the engine, which is the cost
+ * this loop exists to avoid.
+ */
+const isSpace = (code: number) =>
+  code === 0x20 ||
+  (code >= 0x09 && code <= 0x0d) ||
+  (code >= 0x2000 && code <= 0x200a) ||
+  code === 0xa0 ||
+  code === 0x1680 ||
+  code === 0x2028 ||
+  code === 0x2029 ||
+  code === 0x202f ||
+  code === 0x205f ||
+  code === 0x3000 ||
+  code === 0xfeff;
+
+/** `[A-Za-z0-9']` — the apostrophe belongs to the word, so `don't` is one. */
+const isWordChar = (code: number) =>
+  (code >= 0x61 && code <= 0x7a) ||
+  (code >= 0x41 && code <= 0x5a) ||
+  (code >= 0x30 && code <= 0x39) ||
+  code === 0x27;
+
+/**
+ * Characters and words, in one pass.
+ *
+ * CJK has no spaces, so characters and Latin words are counted separately — the
+ * only count that isn't wrong for one of the two. The four regexes this replaces
+ * were correct but allocated a copy of the whole document per `replace` and a
+ * one-string-per-character array per `match`: ~3 ms on a 150 KB document, paid
+ * every time editor state was republished.
+ */
+function countText(text: string): { chars: number; words: number } {
+  let chars = 0;
+  let words = 0;
+  let inWord = false;
+
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index);
+    if (!isSpace(code)) chars++;
+
+    // U+4E00–U+9FA5. Read one code unit at a time, so an ideograph from an
+    // extension plane arrives as two surrogates and counts as neither — which is
+    // exactly what the character class it replaces did.
+    if (code >= 0x4e00 && code <= 0x9fa5) {
+      words++;
+      inWord = false;
+    } else if (isWordChar(code)) {
+      if (!inWord) words++;
+      inWord = true;
+    } else {
+      inWord = false;
+    }
+  }
+
+  return { chars, words };
+}
+
+// The document is the only input, so a caret move — which republishes editor
+// state like every other transaction — reuses the previous result rather than
+// re-reading a document that did not change.
+let countedDoc: ProseMirrorNode | null = null;
+let counted = { chars: 0, words: 0 };
+
 const stats = computed(() => {
-  /* v8 ignore next */
-  const text = editor.value?.getText() ?? '';
-  const chars = text.replace(/\s/g, '').length;
-  // CJK has no spaces; counting characters and Latin words separately is the
-  // only count that isn't wrong for one of the two.
-  const cjk = (text.match(/[一-龥]/g) ?? []).length;
-  const words = (text.replace(/[一-龥]/g, ' ').match(/[A-Za-z0-9']+/g) ?? []).length;
-  return { chars, words: cjk + words };
+  const instance = editor.value;
+  /* v8 ignore next -- the statusbar only renders once the editor exists */
+  if (!instance) return counted;
+  const { doc } = instance.state;
+  if (doc === countedDoc) return counted;
+  countedDoc = doc;
+  counted = countText(instance.getText());
+  return counted;
 });
 
 /* Text colour ---------------------------------------------------------------- */
@@ -863,19 +965,7 @@ defineExpose({
     <UeBubbleMenu
       v-if="editor && editable"
       :editor="editor"
-      :tasks="
-        props.ai?.tasks ?? [
-          'improve',
-          'translate',
-          'summarize',
-          'rewrite',
-          'expand',
-          'shorten',
-          'fixGrammar',
-          'changeTone',
-          'custom'
-        ]
-      "
+      :tasks="aiTasks"
       :has-a-i="hasAI"
       :t="t"
       @ai="ai.start"

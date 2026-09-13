@@ -48,6 +48,23 @@ describe('inline markdown', () => {
     expect(inlineToHTML('[a](<https://x.com/a b>)')).toBe('<a href="https://x.com/a b">a</a>');
   });
 
+  // CommonMark lets a bare destination hold parentheses as long as they pair up.
+  // Wikipedia and MSDN both put them in URLs, so stopping at the first `)` cuts
+  // the link short and drops the tail into the paragraph as loose text.
+  it('keeps balanced parentheses inside a bare URL', () => {
+    expect(inlineToHTML('[a](https://x.com/a(b))')).toBe('<a href="https://x.com/a(b)">a</a>');
+    expect(inlineToHTML('[a](https://en.wikipedia.org/wiki/Ruby_(programming_language))')).toBe(
+      '<a href="https://en.wikipedia.org/wiki/Ruby_(programming_language)">a</a>'
+    );
+    expect(inlineToHTML('![alt](https://x.com/a(b).png)')).toBe(
+      '<img src="https://x.com/a(b).png" alt="alt">'
+    );
+  });
+
+  it('still ends a bare URL at the first unpaired closing parenthesis', () => {
+    expect(inlineToHTML('[a](https://x.com/a)b)')).toBe('<a href="https://x.com/a">a</a>b)');
+  });
+
   it('leaves a link whose text is a code span intact', () => {
     expect(inlineToHTML('[`x`](https://x.com)')).toBe('<a href="https://x.com"><code>x</code></a>');
   });
@@ -131,6 +148,55 @@ describe('block markdown', () => {
   it('converts blockquotes, including lazy continuation lines', () => {
     expect(markdownToHTML('> a\n> b')).toBe('<blockquote><p>a\nb</p></blockquote>');
     expect(markdownToHTML('> a\nb')).toBe('<blockquote><p>a\nb</p></blockquote>');
+    expect(markdownToHTML('> a\n\nb')).toBe('<blockquote><p>a</p></blockquote><p>b</p>');
+  });
+
+  it('ends a quote at a line that opens a block of its own', () => {
+    expect(markdownToHTML('> a\n# H')).toBe('<blockquote><p>a</p></blockquote><h1>H</h1>');
+    expect(markdownToHTML('> a\n- b')).toBe('<blockquote><p>a</p></blockquote><ul><li>b</li></ul>');
+    expect(markdownToHTML('> a\n1. b')).toBe(
+      '<blockquote><p>a</p></blockquote><ol><li>b</li></ol>'
+    );
+    expect(markdownToHTML('> a\n```\nc\n```')).toBe(
+      '<blockquote><p>a</p></blockquote><pre><code>c</code></pre>'
+    );
+  });
+
+  it('lets a list interrupt a paragraph only when it legally can', () => {
+    expect(markdownToHTML('正文\n- b')).toBe('<p>正文</p><ul><li>b</li></ul>');
+    expect(markdownToHTML('正文\n1. b')).toBe('<p>正文</p><ol><li>b</li></ol>');
+    expect(markdownToHTML('> a\n2. b')).toBe('<blockquote><p>a\n2. b</p></blockquote>');
+  });
+
+  it('keeps a numbered line that cannot interrupt as part of the sentence', () => {
+    // CommonMark only lets an ordered list interrupt a paragraph when it starts at
+    // 1. Without that rule a wrapped line beginning with a number loses the number
+    // outright — it is eaten as the list marker — and ordinary prose arriving from
+    // the clipboard gets silently restructured. Every nesting depth has to honour
+    // it, since each is reached by its own code path.
+    expect(markdownToHTML('我家窗户是\n14. 门是 6')).toBe('<p>我家窗户是\n14. 门是 6</p>');
+    expect(markdownToHTML('> 我家窗户是\n14. 门是 6')).toBe(
+      '<blockquote><p>我家窗户是\n14. 门是 6</p></blockquote>'
+    );
+    expect(markdownToHTML('- 我家窗户是\n  14. 门是 6')).toBe(
+      '<ul><li>我家窗户是\n14. 门是 6</li></ul>'
+    );
+    expect(markdownToHTML('- a\n  - 我家窗户是\n    14. 门是 6')).toBe(
+      '<ul><li>a<ul><li>我家窗户是\n14. 门是 6</li></ul></li></ul>'
+    );
+  });
+
+  it('still opens a list when the numbering starts a block of its own', () => {
+    // Copying items 5-8 out of a longer list is a list, not a sentence.
+    expect(markdownToHTML('5. 五\n6. 六')).toBe('<ol><li>五</li><li>六</li></ol>');
+  });
+
+  it('keeps a nested ordered run whose later markers are not 1', () => {
+    // `2.` sits at the same depth as `1.`, so it is the next item rather than a
+    // marker trying to interrupt the paragraph above it.
+    expect(markdownToHTML('- 步骤\n  1. 先做\n  2. 再做')).toBe(
+      '<ul><li>步骤<ol><li>先做</li><li>再做</li></ol></li></ul>'
+    );
   });
 
   it('converts thematic breaks', () => {
@@ -159,6 +225,22 @@ describe('block markdown', () => {
 
   it('switches list type when the marker changes', () => {
     expect(markdownToHTML('- a\n\n1. b')).toBe('<ul><li>a</li></ul><ol><li>b</li></ol>');
+  });
+
+  it('keeps every item when the marker changes with no blank line between', () => {
+    // Hand-written and model-written Markdown runs the two lists together. Each
+    // run is its own list, and none of them may go missing.
+    expect(markdownToHTML('- a\n1. b')).toBe('<ul><li>a</li></ul><ol><li>b</li></ol>');
+    expect(markdownToHTML('1. one\n- two')).toBe('<ol><li>one</li></ol><ul><li>two</li></ul>');
+    expect(markdownToHTML('- a\n1. b\n- c')).toBe(
+      '<ul><li>a</li></ul><ol><li>b</li></ol><ul><li>c</li></ul>'
+    );
+  });
+
+  it('keeps an item that dedents below the level the run started at', () => {
+    expect(markdownToHTML('  - deep\n- shallow')).toBe(
+      '<ul><li>deep</li></ul><ul><li>shallow</li></ul>'
+    );
   });
 
   it('converts a GFM table', () => {

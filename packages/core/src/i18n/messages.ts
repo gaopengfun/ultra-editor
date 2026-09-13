@@ -9,6 +9,9 @@ export const zhCN = {
   'toolbar.strike': '删除线',
   'toolbar.code': '行内代码',
   'toolbar.color': '文字颜色',
+  // Distinct from `table.clearColor`: this palette sets the colour of the text,
+  // the table one sets a cell's background. They are not the same action.
+  'toolbar.clearColor': '清除颜色',
   'toolbar.bulletList': '无序列表',
   'toolbar.orderedList': '有序列表',
   'toolbar.blockquote': '引用',
@@ -30,7 +33,9 @@ export const zhCN = {
 
   // code block
   'codeBlock.language': '代码语言',
-  'codeBlock.plain': '纯文本',
+  // Not translated: it sits in a list of language names (JavaScript, CSS, Rust)
+  // that are proper nouns everywhere, and was the only entry that read as Chinese.
+  'codeBlock.plain': 'PlainText',
   'codeBlock.copy': '复制',
   'codeBlock.copied': '已复制',
 
@@ -86,6 +91,13 @@ export const zhCN = {
   'table.cellColor': '单元格底色',
   'table.clearColor': '清除底色',
 
+  // colour picker
+  'color.custom': '自定义',
+  'color.area': '饱和度与明度，方向键微调',
+  'color.hue': '色相',
+  'color.hex': '十六进制颜色值',
+  'color.apply': '应用',
+
   // slash menu
   'slash.empty': '没有匹配的命令',
   'slash.group.basic': '基础',
@@ -140,6 +152,7 @@ export const en: Messages = {
   'toolbar.strike': 'Strikethrough',
   'toolbar.code': 'Inline code',
   'toolbar.color': 'Text color',
+  'toolbar.clearColor': 'Clear color',
   'toolbar.bulletList': 'Bullet list',
   'toolbar.orderedList': 'Ordered list',
   'toolbar.blockquote': 'Blockquote',
@@ -211,6 +224,12 @@ export const en: Messages = {
   'table.delTable': 'Delete table',
   'table.cellColor': 'Cell background',
   'table.clearColor': 'Clear background',
+
+  'color.custom': 'Custom',
+  'color.area': 'Saturation and brightness, arrow keys to nudge',
+  'color.hue': 'Hue',
+  'color.hex': 'Hex colour',
+  'color.apply': 'Apply',
 
   'slash.empty': 'No matching command',
   'slash.group.basic': 'Basic',

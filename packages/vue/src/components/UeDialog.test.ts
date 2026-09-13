@@ -118,6 +118,15 @@ describe('UeDialog', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  // The close button is the first focusable in DOM order because it lives in the
+  // header, so "focus the first control" would hand every dialog's opening
+  // keystroke to a button that dismisses it. Content comes first.
+  it('opens with the caret on the first control in the body, not the close button', async () => {
+    await openDialog({}, { default: '<input class="url" /><button class="go">确定</button>' });
+
+    expect(document.activeElement).toBe(document.body.querySelector('.url'));
+  });
+
   it('wraps Tab from the last control back to the first', async () => {
     await openDialog({}, { default: '<input class="first" /><button class="last">确定</button>' });
     const last = document.body.querySelector<HTMLElement>('.last');

@@ -124,7 +124,9 @@ describe('code block', () => {
     editor.commands.setContent('<pre><code class="language-typescript">const a = 1</code></pre>');
     const html = editor.getHTML();
 
-    expect(html).toContain('<pre><code class="language-typescript">');
+    // On the `<pre>` as well as the `<code>`: the class is what a sanitiser
+    // strips, the data attribute is what survives to be read back.
+    expect(html).toContain('<pre data-language="typescript"><code class="language-typescript">');
     expect(html).toContain('const a = 1');
   });
 

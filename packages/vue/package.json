@@ -14,13 +14,13 @@
   ],
   "license": "MIT",
   "author": "gaopeng",
-  "homepage": "https://github.com/penggao4/ultra-editor#readme",
+  "homepage": "https://github.com/gaopengfun/ultra-editor#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/penggao4/ultra-editor.git",
+    "url": "git+https://github.com/gaopengfun/ultra-editor.git",
     "directory": "packages/vue"
   },
-  "bugs": "https://github.com/penggao4/ultra-editor/issues",
+  "bugs": "https://github.com/gaopengfun/ultra-editor/issues",
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

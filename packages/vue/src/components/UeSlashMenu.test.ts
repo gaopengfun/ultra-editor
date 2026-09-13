@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { createTranslator, type SlashItem } from '@ultra-editor/core';
 import UeSlashMenu from './UeSlashMenu.vue';
@@ -8,7 +9,21 @@ let wrapper: VueWrapper;
 afterEach(() => {
   wrapper?.unmount();
   document.body.innerHTML = '';
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
+
+/** jsdom has no layout, so the palette measures 0×0 until it is told otherwise. */
+function measuring(width: number, height: number) {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    width,
+    height,
+    left: 0,
+    top: 0,
+    right: width,
+    bottom: height
+  } as DOMRect);
+}
 
 const ITEMS = [
   { key: 'h1', group: 'basic', labelKey: 'toolbar.h1', icon: 'h1', run: () => {} },
@@ -54,6 +69,52 @@ describe('UeSlashMenu', () => {
     expect(menu()?.getAttribute('role')).toBe('listbox');
     expect(menu()?.style.left).toBe('12px');
     expect(menu()?.style.top).toBe('34px');
+  });
+
+  // The palette grows with the number of commands — with an AI provider wired up
+  // it is tall enough that a caret in the lower half of the window would push the
+  // AI group off the bottom, where it cannot be clicked or scrolled to.
+  it('lifts the palette back inside the viewport when the caret sits near the bottom', async () => {
+    vi.stubGlobal('innerWidth', 1000);
+    vi.stubGlobal('innerHeight', 861);
+    measuring(273, 478);
+
+    render({ x: 41, y: 467 });
+    await nextTick();
+    await nextTick();
+
+    // 861 − 478 tall − 8 gap.
+    expect(menu()?.style.top).toBe('375px');
+    expect(menu()?.style.left).toBe('41px');
+  });
+
+  it('pulls the palette off the right edge when the caret is near it', async () => {
+    vi.stubGlobal('innerWidth', 1000);
+    vi.stubGlobal('innerHeight', 861);
+    measuring(273, 200);
+
+    render({ x: 900, y: 100 });
+    await nextTick();
+    await nextTick();
+
+    // 1000 − 273 wide − 8 gap.
+    expect(menu()?.style.left).toBe('719px');
+    expect(menu()?.style.top).toBe('100px');
+  });
+
+  // The editor can be torn down with the palette still open — between drawing it
+  // at the caret and measuring it there is a tick in which it can go away.
+  it('gives up placing the palette if it is torn down before it can be measured', async () => {
+    vi.stubGlobal('innerWidth', 1000);
+    vi.stubGlobal('innerHeight', 861);
+    measuring(273, 478);
+
+    render({ x: 41, y: 467 });
+    wrapper.unmount();
+    await nextTick();
+    await nextTick();
+
+    expect(menu()).toBeNull();
   });
 
   it('keeps the order it is given and heads each run of items with its group', () => {

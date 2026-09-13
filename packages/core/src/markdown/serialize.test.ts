@@ -45,6 +45,30 @@ describe('document to markdown', () => {
     expect(toMarkdown('<p><u>下划线</u></p>')).toBe('下划线');
   });
 
+  it('escapes a literal tilde so it cannot come back as syntax', () => {
+    // Unescaped, `~~x~~` returns as a strikethrough nobody applied — and a
+    // paragraph of `~~~` opens a fence that swallows the rest of the document.
+    expect(toMarkdown('<p>~~开心~~啦</p>')).toBe('\\~\\~开心\\~\\~啦');
+    expect(markdownToHTML(toMarkdown('<p>~~开心~~啦</p>'))).toBe('<p>~~开心~~啦</p>');
+    expect(markdownToHTML(toMarkdown('<p>~~~</p><p>后面的正文</p>'))).toBe(
+      '<p>~~~</p><p>后面的正文</p>'
+    );
+  });
+
+  it('still writes a real strikethrough, tildes in its text and all', () => {
+    expect(toMarkdown('<p><s>删</s></p>')).toBe('~~删~~');
+    expect(markdownToHTML(toMarkdown('<p><s>a~b</s></p>'))).toBe('<p><s>a~b</s></p>');
+  });
+
+  it('escapes a leading number by its punctuation, not its digits', () => {
+    // `\1.` is not a valid escape — Markdown only escapes punctuation — so the
+    // backslash comes back as text and the author sees one they never typed.
+    expect(toMarkdown('<p>1. 正文</p>')).toBe('1\\. 正文');
+    expect(toMarkdown('<p>2) 第二</p>')).toBe('2\\) 第二');
+    expect(markdownToHTML(toMarkdown('<p>1. 正文</p>'))).toBe('<p>1. 正文</p>');
+    expect(markdownToHTML(toMarkdown('<p>2024. 全年营收</p>'))).toBe('<p>2024. 全年营收</p>');
+  });
+
   it('writes a code span that itself contains backticks', () => {
     expect(toMarkdown('<p><code>a`b</code></p>')).toBe('``a`b``');
     // A backtick at the very edge needs padding, or the fences run together.
@@ -59,6 +83,23 @@ describe('document to markdown', () => {
 
     // `[文字]()` would only read back as broken syntax.
     expect(markdown).toBe('文字');
+  });
+
+  // A bare destination cannot hold whitespace, and can only hold parentheses
+  // that pair up. Written bare, each of these reads back as literal text or as a
+  // truncated URL — the link is lost on the way through source mode.
+  it('wraps a URL that a bare destination could not carry', () => {
+    expect(toMarkdown('<p><a href="https://x.com/a b">t</a></p>')).toBe('[t](<https://x.com/a b>)');
+    expect(toMarkdown('<p><a href="https://x.com/a(b">t</a></p>')).toBe('[t](<https://x.com/a(b>)');
+    expect(toMarkdown('<p><a href="https://x.com/a)b">t</a></p>')).toBe('[t](<https://x.com/a)b>)');
+    expect(toMarkdown('<p><img src="https://x.com/a b.png" alt="a"></p>')).toBe(
+      '![a](<https://x.com/a b.png>)'
+    );
+  });
+
+  it('leaves a URL with balanced parentheses bare', () => {
+    expect(toMarkdown('<p><a href="https://x.com/a(b)">t</a></p>')).toBe('[t](https://x.com/a(b))');
+    expect(toMarkdown('<p><a href="https://x.com/a">t</a></p>')).toBe('[t](https://x.com/a)');
   });
 
   it('pads a row that a merged cell left short', () => {
@@ -150,15 +191,66 @@ describe('document to markdown', () => {
     expect(toMarkdown('<p>2 * 3 * 4</p>')).toBe('2 \\* 3 \\* 4');
     expect(toMarkdown('<p># 不是标题</p>')).toBe('\\# 不是标题');
     expect(toMarkdown('<p>- 不是列表</p>')).toBe('\\- 不是列表');
-    expect(toMarkdown('<p>1. 不是有序列表</p>')).toBe('\\1. 不是有序列表');
+    expect(toMarkdown('<p>1. 不是有序列表</p>')).toBe('1\\. 不是有序列表');
   });
 
   it('writes a hard break as two trailing spaces', () => {
     expect(toMarkdown('<p>a<br>b</p>')).toBe('a  \nb');
   });
 
+  it('drops a hard break that has no line to break', () => {
+    // Markdown has no syntax for two breaks in a row: the second writes a line
+    // holding only its own `  ` marker, and a blank line ends the paragraph. Kept,
+    // it reads back as two paragraphs — a blank line the author never typed —
+    // and shows in the source view as a line that looks empty but is not.
+    expect(toMarkdown('<p>a<br><br>b</p>')).toBe('a  \nb');
+    expect(toMarkdown('<p>a<br></p>')).toBe('a');
+    expect(toMarkdown('<p><br>a</p>')).toBe('a');
+    // A paragraph that is nothing but a break carries no text at all.
+    expect(toMarkdown('<p>a</p><p><br></p><p>b</p>')).toBe('a\n\nb');
+  });
+
+  it('keeps a paragraph whole across a doubled break', () => {
+    // The break is lost either way; the paragraph must not be.
+    expect(markdownToHTML(toMarkdown('<p>a<br><br>b</p>'))).toBe('<p>a<br>b</p>');
+  });
+
+  it('folds a break inside a heading, which markdown can only write on one line', () => {
+    // Spilled onto a second line the remainder comes back as a paragraph, so the
+    // heading loses its level. A space costs the break and keeps the heading.
+    expect(toMarkdown('<h2>标题<br>第二行</h2>')).toBe('## 标题 第二行');
+    expect(toMarkdown('<h2><br><br>标题</h2>')).toBe('## 标题');
+    expect(roundTrip('## 标题 第二行')).toBe('## 标题 第二行');
+  });
+
+  it('folds a break inside a table cell, marker and all', () => {
+    // A cell is one line too. Left behind, the marker's two spaces show as a gap
+    // that the next trip out would trim — so the source never settled.
+    expect(toMarkdown('<table><tbody><tr><td><p>a<br>b</p></td></tr></tbody></table>')).toBe(
+      '| a b |\n| --- |'
+    );
+  });
+
   it('drops empty paragraphs rather than emitting blank blocks', () => {
     expect(toMarkdown('<p>a</p><p></p><p>b</p>')).toBe('a\n\nb');
+  });
+
+  it('keeps a second paragraph in the list item it was written under', () => {
+    const html = '<ul><li><p>一</p><p>续段</p></li><li><p>二</p></li></ul>';
+    const markdown = '- 一\n\n  续段\n- 二';
+    expect(toMarkdown(html)).toBe(markdown);
+    // Read back as the end of the list, the continuation became a top-level
+    // paragraph and split the list in two around itself — and each split wrote a
+    // blank line of its own, so the source grew a line every way it was opened.
+    expect(roundTrip(markdown)).toBe(markdown);
+  });
+
+  it('still lets an unindented paragraph end the list', () => {
+    expect(roundTrip('- 一\n- 二\n\n段落')).toBe('- 一\n- 二\n\n段落');
+  });
+
+  it('ends the list at a trailing blank line, with nothing after it to continue', () => {
+    expect(markdownToHTML('- 一\n')).toBe('<ul><li>一</li></ul>');
   });
 
   it('returns an empty string for an empty document', () => {
@@ -316,5 +408,36 @@ describe('looksLikeMarkdown', () => {
     // Rewriting someone's prose because it happened to contain an asterisk is
     // worse than leaving a stray bit of Markdown untouched.
     expect(looksLikeMarkdown(text)).toBe(false);
+  });
+
+  // Two inline signals are needed for a `true`, so each of these pairs an
+  // emphasis run with a code span to isolate what the emphasis check itself says.
+  it.each([
+    ['**粗** 和 `code`', true],
+    ['~~删~~ 和 `code`', true],
+    ['**a*** 和 `code`', true],
+    ['** 开头是空格** 和 `code`', false],
+    ['**结尾是空格 ** 和 `code`', false],
+    ['**** 和 `code`', false],
+    ['开着的 **加粗 和 `code`', false],
+    ['**跨\n行** 和 `code`', true]
+  ])('reads the emphasis in %j as %s', (text, expected) => {
+    expect(looksLikeMarkdown(text)).toBe(expected);
+  });
+
+  it('answers in linear time for a paste full of unpaired emphasis', () => {
+    // `**kwargs` in pasted Python, `~~` used as a wave dash in Chinese: openers
+    // with no closer. The lazy regexes this replaced ran to the end of the input
+    // and backtracked once per opener, which took 2.7 s on this exact string.
+    const text = 'lorem ipsum dolor sit amet **consectetur ~~adipiscing elit. '.repeat(16_000);
+
+    const started = performance.now();
+    const result = looksLikeMarkdown(text);
+    const elapsed = performance.now() - started;
+
+    expect(result).toBe(false);
+    // Measured at ~1 ms. The bound is loose on purpose — this is here to catch a
+    // return to quadratic scanning, not to police milliseconds on a busy machine.
+    expect(elapsed).toBeLessThan(150);
   });
 });

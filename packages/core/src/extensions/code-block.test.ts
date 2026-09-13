@@ -58,7 +58,7 @@ describe('code block chrome', () => {
     // gets a bare <pre><code>.
     expect(html).not.toContain('ue-codeblock');
     expect(html).not.toContain('<button');
-    expect(html).toBe('<pre><code class="language-css">a{}</code></pre>');
+    expect(html).toBe('<pre data-language="css"><code class="language-css">a{}</code></pre>');
   });
 
   it('draws the picker and the copy button on the block while editing', () => {
@@ -69,7 +69,24 @@ describe('code block chrome', () => {
 
   it('shows plain text as the language of an untagged block', () => {
     editor.commands.setContent('<pre><code>裸代码</code></pre>');
-    expect(trigger().textContent).toBe('纯文本');
+    expect(trigger().textContent).toBe('PlainText');
+  });
+
+  // highlight.js only guesses when no language is set, and on snippets this
+  // short it guesses badly — this one reads as `ini`, which paints the trailing
+  // semicolon as a comment. "PlainText" has to mean plain text.
+  it('leaves an untagged block unhighlighted instead of guessing at it', () => {
+    editor.commands.setContent('<pre><code>const greet = (name) => `hi ${name}`;</code></pre>');
+
+    expect(trigger().textContent).toBe('PlainText');
+    expect(code().querySelector('[class*="hljs"]')).toBeNull();
+    expect(code().textContent).toBe('const greet = (name) => `hi ${name}`;');
+  });
+
+  it('still highlights a block that names its language', () => {
+    editor.commands.setContent('<pre><code class="language-css">a{color:red}</code></pre>');
+
+    expect(code().querySelector('[class*="hljs"]')).not.toBeNull();
   });
 
   it('keeps a key press on the toolbar out of the document', () => {
@@ -128,18 +145,49 @@ describe('code block language picker', () => {
     trigger().click();
     option('Rust').click();
 
-    expect(editor.getHTML()).toContain('<pre><code class="language-rust">a{}</code></pre>');
+    expect(editor.getHTML()).toContain(
+      '<pre data-language="rust"><code class="language-rust">a{}</code></pre>'
+    );
     expect(trigger().textContent).toBe('Rust');
     // The menu is teleported to <body>; picking has to take it back down again.
     expect(menu()).toBeNull();
   });
 
+  it('writes the language onto the pre as well as the code', () => {
+    // The class on the <code> is the only place upstream records the language, and
+    // it is the first thing an HTML sanitiser drops — most allow-lists have no
+    // entry for `class`. On the <pre> as a data attribute it survives the trip,
+    // and a read-only page can style or label the block from it.
+    trigger().click();
+    option('Rust').click();
+
+    const pre = document.createElement('div');
+    pre.innerHTML = editor.getHTML();
+    expect(pre.querySelector('pre')?.getAttribute('data-language')).toBe('rust');
+  });
+
+  it('reads the language back off the pre', () => {
+    editor.commands.setContent('<pre data-language="rust"><code>fn main() {}</code></pre>');
+
+    expect(trigger().textContent).toBe('Rust');
+    expect(editor.getHTML()).toContain('data-language="rust"');
+  });
+
+  it('still reads a language written only as a class on the code', () => {
+    // Every document saved before `data-language` existed, and everything the
+    // Markdown parser produces from a fenced block.
+    editor.commands.setContent('<pre><code class="language-rust">fn main() {}</code></pre>');
+
+    expect(trigger().textContent).toBe('Rust');
+  });
+
   it('drops the class entirely when plain text is picked', () => {
     trigger().click();
-    option('纯文本').click();
+    option('PlainText').click();
 
     expect(editor.getHTML()).toContain('<pre><code>a{}</code></pre>');
     expect(editor.getHTML()).not.toContain('language-');
+    expect(editor.getHTML()).not.toContain('data-language');
     expect(code().className).toBe('');
   });
 
@@ -167,7 +215,7 @@ describe('code block language picker', () => {
 
     expect(labels).not.toContain('plaintext');
     expect(labels).not.toContain('php-template');
-    expect(labels).toContain('纯文本');
+    expect(labels).toContain('PlainText');
   });
 
   it('shows a host-registered language under its raw highlight.js id', () => {
@@ -179,6 +227,41 @@ describe('code block language picker', () => {
     trigger().click();
     // No display name is better than a guessed one.
     expect(option('nginx')).toBeDefined();
+  });
+
+  // `listLanguages` returns grammar *names*, and highlight.js files TOML under
+  // `ini` and HTML under `xml`. Without them the picker makes a TOML author
+  // label their block "INI".
+  it('offers the aliases highlight.js resolves but never lists', () => {
+    trigger().click();
+    const labels = options().map((item) => item.textContent);
+
+    expect(labels).toContain('TOML');
+    expect(labels).toContain('HTML');
+    // Sorted by display name, not by the id they arrive under.
+    expect(labels.indexOf('HTML')).toBeLessThan(labels.indexOf('INI'));
+    expect(labels.indexOf('TOML')).toBeGreaterThan(labels.indexOf('SQL'));
+  });
+
+  it('highlights a block that picked an alias', () => {
+    editor.commands.setContent('<pre><code>title = "x"</code></pre>');
+    trigger().click();
+    option('TOML').click();
+
+    // The whole point of offering it: `toml` has no grammar of its own, so this
+    // only paints if the id reaches `lowlight.highlight` instead of being taken
+    // for an unregistered language and left to the disabled guesser.
+    expect(editor.getHTML()).toContain('data-language="toml"');
+    expect(code().querySelector('[class*="hljs"]')).not.toBeNull();
+
+    // The other alias resolves through a different grammar, so it is a separate
+    // claim: `html` only paints if it reaches `xml`.
+    editor.commands.setContent('<pre><code>&lt;b&gt;x&lt;/b&gt;</code></pre>');
+    trigger().click();
+    option('HTML').click();
+
+    expect(editor.getHTML()).toContain('data-language="html"');
+    expect(code().querySelector('[class*="hljs"]')).not.toBeNull();
   });
 
   it('announces itself as an expanded listbox while open', () => {
@@ -205,7 +288,7 @@ describe('code block language picker', () => {
     trigger().click();
 
     expect(document.activeElement).toBe(options()[0]);
-    expect(options()[0].textContent).toBe('纯文本');
+    expect(options()[0].textContent).toBe('PlainText');
   });
 
   it('walks the list with the arrow keys and wraps at both ends', () => {
@@ -357,7 +440,7 @@ describe('code block language catalogue', () => {
     // This is the state the Vue component mounts in: the grammars are still in
     // flight, so the picker has nothing but plain text to offer.
     trigger().click();
-    expect(options().map((item) => item.textContent)).toEqual(['纯文本']);
+    expect(options().map((item) => item.textContent)).toEqual(['PlainText']);
     trigger().click();
 
     lowlight.register('rust', common.rust);
@@ -380,6 +463,19 @@ describe('code block language catalogue', () => {
     // close and a reopen.
     expect(option('Rust')).toBeDefined();
     expect(menu()).not.toBeNull();
+  });
+
+  it('offers no alias the registry cannot paint', () => {
+    const lowlight = createLowlight();
+    lowlight.register('rust', common.rust);
+    editor.destroy();
+    editor = makeLeanEditor('<pre><code>x</code></pre>', lowlight);
+
+    trigger().click();
+
+    // `ini` and `xml` are not in this registry, so TOML and HTML would be
+    // choices that paint nothing — worse than never offering them.
+    expect(options().map((item) => item.textContent)).toEqual(['PlainText', 'Rust']);
   });
 
   it('registers the common set on demand', async () => {

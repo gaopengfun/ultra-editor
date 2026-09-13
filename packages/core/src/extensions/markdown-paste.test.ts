@@ -45,7 +45,11 @@ describe('markdown paste', () => {
 
     const html = paste(editor, { 'text/plain': '```ts\nconst a = 1;\n```' });
 
-    expect(html).toContain('<pre><code class="language-ts">const a = 1;</code></pre>');
+    // The fence writes the language as a class; the document re-serialises it
+    // onto the `<pre>` as well, which is where it survives being saved.
+    expect(html).toContain(
+      '<pre data-language="ts"><code class="language-ts">const a = 1;</code></pre>'
+    );
   });
 
   it('leaves ordinary prose as the text it is', () => {

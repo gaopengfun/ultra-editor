@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
+import { createTranslator } from '@ultra-editor/core';
 import UeColorPicker from './UeColorPicker.vue';
 import UeColorPanel from './UeColorPanel.vue';
+
+const t = createTranslator('zh-CN', {});
 
 let wrapper: VueWrapper;
 
@@ -21,7 +24,7 @@ const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
 function render(props: Record<string, unknown> = {}) {
   wrapper = mount(UeColorPicker, {
-    props: { modelValue: null, title: '文字颜色', clearLabel: '清除', ...props },
+    props: { modelValue: null, title: '文字颜色', clearLabel: '清除', t, ...props },
     attachTo: document.body
   });
   return wrapper;
@@ -108,7 +111,10 @@ describe('UeColorPicker', () => {
     render({ modelValue: '#dc2626' });
     await openPanel();
 
-    document.body.querySelector<HTMLButtonElement>('.ue-color-actions .ue-btn')?.click();
+    // Last in the row: the custom-colour toggle comes first.
+    Array.from(document.body.querySelectorAll<HTMLButtonElement>('.ue-color-actions .ue-btn'))
+      .at(-1)
+      ?.click();
     await wrapper.vm.$nextTick();
 
     expect(wrapper.emitted('clear')).toHaveLength(1);

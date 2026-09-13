@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import UeIcon from './UeIcon.vue';
+import { clampToViewport } from '../composables/useFloating';
 import type { SlashItem, Translator } from '@ultra-editor/core/lean';
 
 /**
@@ -38,14 +39,42 @@ const rows = computed(() =>
     startsGroup: index === 0 || props.items[index - 1].group !== item.group
   }))
 );
+
+const element = ref<HTMLElement>();
+const position = ref({ left: props.x, top: props.y });
+
+/**
+ * Draw at the caret, then measure and pull back inside the viewport.
+ *
+ * The height has to be measured rather than assumed: filtering the query shrinks
+ * the list row by row, and the AI group only exists when a provider is wired up.
+ */
+async function place() {
+  position.value = { left: props.x, top: props.y };
+  await nextTick();
+  if (!element.value) return;
+  position.value = clampToViewport(
+    { x: props.x, y: props.y },
+    element.value.getBoundingClientRect()
+  );
+}
+
+watch(
+  () => [props.visible, props.x, props.y, props.items.length],
+  () => {
+    if (props.visible) void place();
+  },
+  { immediate: true }
+);
 </script>
 
 <template>
   <Teleport to="body">
     <div
       v-if="visible"
+      ref="element"
       class="ue-menu ue-slash"
-      :style="{ left: x + 'px', top: y + 'px' }"
+      :style="{ left: position.left + 'px', top: position.top + 'px' }"
       role="listbox"
     >
       <p v-if="!items.length" class="ue-menu__empty">{{ t('slash.empty') }}</p>

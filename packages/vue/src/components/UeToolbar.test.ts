@@ -155,12 +155,25 @@ describe('colour', () => {
 
     const clear = Array.from(
       document.body.querySelectorAll<HTMLButtonElement>('.ue-color-actions .ue-btn')
-    ).find((element) => element.textContent?.trim() === '清除底色');
+    ).find((element) => element.textContent?.trim() === '清除颜色');
     clear?.click();
     await nextTick();
 
     expect(wrapper.emitted('clear-color')).toHaveLength(1);
     expect(wrapper.emitted('color')).toBeUndefined();
+  });
+
+  // This palette sets the colour of the text. Borrowing the table menu's wording
+  // told the author it would clear a background they never set.
+  it('offers to clear the text colour, not a background', async () => {
+    await wrapper.get('.ue-color-trigger').trigger('click');
+
+    const labels = Array.from(
+      document.body.querySelectorAll<HTMLButtonElement>('.ue-color-actions .ue-btn')
+    ).map((element) => element.textContent?.trim());
+
+    expect(labels).toContain('清除颜色');
+    expect(labels.join(' ')).not.toContain('底色');
   });
 
   it('shows the current colour on the trigger chip', () => {

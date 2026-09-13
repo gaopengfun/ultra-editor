@@ -99,6 +99,31 @@
   line-height: 1.6;
 }
 
+/* An untagged block gets no badge at all.
+   `attr()` on a missing attribute is the empty string, not `none` — the
+   pseudo-element is still generated, so padding and background alone draw a
+   blank pill. This sheet is shared with the editor, whose `<pre>` is built by
+   the node view and never carries `data-language` (the picker in the bar is
+   already saying it), so without this every code block being edited wore one. */
+.ue-content pre:not([data-language])::after {
+  content: none;
+}
+
+.ue-content pre::after {
+  content: attr(data-language);
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  padding: 0 7px;
+  font-size: 12px;
+  line-height: 20px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgb(var(--ue-code-fg-rgb) / 55%);
+  background: rgb(255 255 255 / 8%);
+  border-radius: var(--ue-radius-xs);
+}
+
 .ue-content pre code {
   padding: 0;
   background: transparent;

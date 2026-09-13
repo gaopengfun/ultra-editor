@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { Editor } from '@tiptap/vue-3';
 import UeIcon from './UeIcon.vue';
+import { clampToViewport } from '../composables/useFloating';
 import type { AITask, MessageKey, Translator } from '@ultra-editor/core/lean';
 
 /**
@@ -20,7 +21,9 @@ const emit = defineEmits<{ (e: 'ai', task: AITask): void }>();
 const visible = ref(false);
 const rect = ref({ left: 0, top: 0 });
 const menuOpen = ref(false);
+const menuAbove = ref(false);
 const root = ref<HTMLElement>();
+const taskMenu = ref<HTMLElement>();
 
 const TASK_LABEL: Record<string, MessageKey> = {
   improve: 'ai.improve',
@@ -37,6 +40,28 @@ const TASK_LABEL: Record<string, MessageKey> = {
 
 const aiTasks = computed(() => props.tasks.filter((task) => task in TASK_LABEL));
 
+const GAP = 8;
+/** Last measured size, so a re-show lands in the right place on its first frame. */
+let box = { width: 0, height: 0 };
+
+type Coords = { left: number; top: number; bottom: number };
+
+/**
+ * Centre the bubble over the selection, above it by preference.
+ *
+ * Above is where it stays out of the way of what is being written, but a
+ * selection on the first visible line has no room there — and clamping down into
+ * the viewport would only park the bubble on top of the words it belongs to, so
+ * it flips underneath instead. Sizes are measured rather than assumed: the bar
+ * is wider in English than in Chinese, and wider again once a provider adds the
+ * AI entry, which is exactly when it starts running off a narrow window.
+ */
+function positionFor(start: Coords, end: Coords, size: { width: number; height: number }) {
+  const above = start.top - size.height - GAP;
+  const top = above >= GAP ? above : end.bottom + GAP;
+  return clampToViewport({ x: (start.left + end.left) / 2 - size.width / 2, y: top }, size, GAP);
+}
+
 function update() {
   const { editor } = props;
   const { state, view } = editor;
@@ -50,12 +75,44 @@ function update() {
 
   const start = view.coordsAtPos(from);
   const end = view.coordsAtPos(to);
-  rect.value = {
-    left: Math.max(12, (start.left + end.left) / 2),
-    top: Math.max(12, start.top - 12)
-  };
+  rect.value = positionFor(start, end, box);
   visible.value = true;
+
+  void nextTick(() => {
+    const el = root.value;
+    if (!el) return;
+    const measured = el.getBoundingClientRect();
+    box = { width: measured.width, height: measured.height };
+    rect.value = positionFor(start, end, box);
+  });
 }
+
+/**
+ * Hang the task list off whichever side of the bubble has room for it.
+ *
+ * The bubble is `position: fixed`, so a list that runs past the bottom of the
+ * window cannot be scrolled into view — with ten tasks it is tall enough that a
+ * selection in the lower half of a phone-sized window puts half of them out of
+ * reach for good.
+ */
+watch(menuOpen, (open) => {
+  if (!open) {
+    menuAbove.value = false;
+    return;
+  }
+  void nextTick(() => {
+    // Opening the list is what schedules this, and `update()` keeps the bubble
+    // mounted for as long as the list is open — so the element is always here by
+    // the time the tick runs. Unmounting cancels the watcher job outright rather
+    // than arriving here with nothing to measure.
+    const el = taskMenu.value;
+    /* v8 ignore next */
+    if (!el) return;
+    const height = el.getBoundingClientRect().height;
+    const fitsBelow = rect.value.top + box.height + GAP + height <= window.innerHeight;
+    menuAbove.value = !fitsBelow && rect.value.top - GAP - height >= GAP;
+  });
+});
 
 function pick(task: AITask) {
   menuOpen.value = false;
@@ -79,14 +136,17 @@ watch(visible, (value) => {
   else window.removeEventListener('mousedown', onOutside, true);
 });
 
+// `transaction` alone, not `transaction` + `selectionUpdate`: Tiptap emits the
+// former for every dispatch it applies and the latter immediately after, on the
+// same dispatch, whenever the selection moved. Listening to both re-ran `update`
+// twice for one transaction — and each run measures two document positions, which
+// forces layout.
 onMounted(() => {
-  props.editor.on('selectionUpdate', update);
   props.editor.on('transaction', update);
   props.editor.on('blur', update);
 });
 
 onBeforeUnmount(() => {
-  props.editor.off('selectionUpdate', update);
   props.editor.off('transaction', update);
   props.editor.off('blur', update);
   window.removeEventListener('mousedown', onOutside, true);
@@ -99,7 +159,7 @@ onBeforeUnmount(() => {
       v-if="visible"
       ref="root"
       class="ue-bubble"
-      :style="{ left: rect.left + 'px', top: rect.top + 'px', transform: 'translate(-50%, -100%)' }"
+      :style="{ left: rect.left + 'px', top: rect.top + 'px' }"
     >
       <button
         type="button"
@@ -151,9 +211,14 @@ onBeforeUnmount(() => {
 
       <div
         v-if="menuOpen"
+        ref="taskMenu"
         class="ue-menu"
         role="menu"
-        :style="{ left: '0', top: 'calc(100% + 6px)', position: 'absolute' }"
+        :style="
+          menuAbove
+            ? { left: '0', bottom: 'calc(100% + 6px)', position: 'absolute' }
+            : { left: '0', top: 'calc(100% + 6px)', position: 'absolute' }
+        "
       >
         <button
           v-for="task in aiTasks"

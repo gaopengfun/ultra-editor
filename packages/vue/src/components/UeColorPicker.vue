@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import type { Translator } from '@ultra-editor/core/lean';
 import UeColorPanel from './UeColorPanel.vue';
 
 /** Swatch chip that opens the shared colour panel — no Element Plus, no dependency. */
@@ -7,6 +8,7 @@ const props = defineProps<{
   modelValue: string | null;
   title: string;
   clearLabel: string;
+  t: Translator;
 }>();
 
 const emit = defineEmits<{
@@ -55,6 +57,7 @@ function toggle() {
       :model-value="props.modelValue"
       :label="props.title"
       :clear-label="props.clearLabel"
+      :t="props.t"
       @update:model-value="emit('update:modelValue', $event)"
       @clear="emit('clear')"
       @close="open = false"

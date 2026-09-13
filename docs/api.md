@@ -25,6 +25,24 @@
 | `minHeight` / `maxHeight` | `string`             | `500px` / `70vh`      | 编辑区高度                                           |
 | `debounce`                | `number`             | `0`                   | `update:modelValue` 的节流间隔（ms），`0` 表示不节流 |
 
+#### 大文档请设置 `debounce`
+
+每次 `update:modelValue` 都要把整个文档序列化成 HTML，这是 `v-model` 的契约决定的，
+没法省。代价随文档大小线性增长——实测 157 KB 的文档单次 `getHTML()` 约 **9.7 ms**。
+默认 `debounce: 0` 意味着每敲一个字符付一次；文档到这个量级时，输入会开始发涩。
+
+超过几万字的文档建议设 `100`~`200`：
+
+```vue
+<UltraEditor v-model="html" :debounce="150" />
+```
+
+副作用只有一个：`v-model` 从同步变成延迟这么久才更新。编辑器卸载、以及进入
+Markdown 源码模式之前，待发的值都会立刻冲刷出去，不会丢。
+
+中文输入法不受影响——ProseMirror 在 composition 期间不提交事务，一次候选词上屏
+只产生一次序列化，比逐字符输入英文还省。
+
 ### `ai` 配置
 
 ```ts

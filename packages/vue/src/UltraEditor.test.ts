@@ -322,7 +322,7 @@ describe('two-way binding', () => {
   });
 
   it('stays quiet when the arriving grammars repaint the code blocks', async () => {
-    const html = '<pre><code class="language-python">x = 1</code></pre>';
+    const html = '<pre data-language="python"><code class="language-python">x = 1</code></pre>';
     await mountEditor({ modelValue: html });
 
     // The repaint is the point: wait for the block to actually be highlighted.
@@ -551,6 +551,41 @@ describe('markdown source mode', () => {
     expect(editor.getHTML()).toBe('<h1>边写边同步</h1><p></p>');
   });
 
+  it('drops the pending apply when the author leaves source mode', async () => {
+    vi.useFakeTimers();
+    await mountEditor({ modelValue: '<p>正文</p>' });
+    await sourceToggle().trigger('click');
+
+    await textarea().setValue('# 源码写的');
+    // Leave while the debounce is still pending, then carry on typing in the
+    // document. The timer the textarea scheduled must not come back and revert it.
+    await vi.advanceTimersByTimeAsync(100);
+    await exitButton().trigger('click');
+    editor.commands.setContent('<p>退出后新写的</p>');
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(editor.getHTML()).toBe('<p>退出后新写的</p>');
+  });
+
+  it('leaves the document alone when the author changed nothing', async () => {
+    // The list is what makes this bite: `markdownToHTML` writes a tight
+    // `<li>一</li>` where ProseMirror writes `<li><p>一</p></li>`, so comparing
+    // the two HTML strings never matched and the write always went through.
+    await mountEditor({ modelValue: '<ul><li><p>一</p></li><li><p>二</p></li></ul><p>正文</p>' });
+    const before = editor.getHTML();
+    expect(editor.can().undo()).toBe(false);
+
+    await sourceToggle().trigger('click');
+    await exitButton().trigger('click');
+
+    // Looking at the source is not editing it. Rewriting the document with the
+    // content it already had produces a transaction all the same, and that
+    // transaction is what the author's next Ctrl+Z lands on — undoing nothing
+    // visible instead of the edit they meant to take back.
+    expect(editor.getHTML()).toBe(before);
+    expect(editor.can().undo()).toBe(false);
+  });
+
   it('shows only the way out while the textarea is open', async () => {
     await mountEditor();
     await sourceToggle().trigger('click');
@@ -632,6 +667,50 @@ describe('word count', () => {
     await flush();
 
     expect(statusbar()).toContain('3 字');
+  });
+
+  it('does not re-read the document when only the caret moved', async () => {
+    await mountEditor({ modelValue: '<p>你好 hello world</p>' });
+    await flush();
+
+    const getText = vi.spyOn(editor, 'getText');
+    for (let step = 0; step < 5; step++) {
+      editor.commands.setTextSelection(2 + step);
+      await flush();
+    }
+
+    // A caret move republishes editor state like any other transaction, so the
+    // count is recomputed unless the document itself is the cache key.
+    expect(getText).not.toHaveBeenCalled();
+    expect(statusbar()).toContain('4 字');
+  });
+
+  it('treats every JavaScript whitespace code point as whitespace', async () => {
+    // One of each class `\s` covers: ASCII controls, NBSP, Ogham, the U+2000 run,
+    // the line/paragraph separators, and the ideographic space CJK text is full of.
+    const spaces = '\t\n\v\f\r         　﻿';
+    await mountEditor({ modelValue: `<p>ab${spaces}cd</p>` });
+    await flush();
+
+    expect(statusbar()).toContain('4 字符');
+    expect(statusbar()).toContain('2 字');
+  });
+
+  it('counts an apostrophe as part of the word it sits in', async () => {
+    await mountEditor({ modelValue: `<p>don't stop</p>` });
+    await flush();
+
+    expect(statusbar()).toContain('2 字');
+  });
+
+  it('counts a character outside the CJK range as neither a word nor CJK', async () => {
+    // U+20000 is a CJK extension-B ideograph: a surrogate pair that this counter
+    // has never included (see the range in the source), and must keep not counting.
+    await mountEditor({ modelValue: '<p>\u{20000}</p>' });
+    await flush();
+
+    expect(statusbar()).toContain('0 字');
+    expect(statusbar()).toContain('2 字符');
   });
 });
 
@@ -766,7 +845,7 @@ describe('text colour', () => {
 
     await wrapper.get('.ue-color-trigger').trigger('click');
     Array.from(document.body.querySelectorAll<HTMLButtonElement>('.ue-color-actions .ue-btn'))
-      .find((entry) => entry.textContent?.trim() === '清除底色')
+      .find((entry) => entry.textContent?.trim() === '清除颜色')
       ?.click();
     await flush();
 
@@ -2042,5 +2121,21 @@ describe('AI', () => {
       document.body.querySelectorAll<HTMLButtonElement>('.ue-bubble .ue-menu__item')
     ).map((item) => item.textContent?.trim());
     expect(items).toEqual(['翻译']);
+  });
+
+  it('hands the bubble the same task list on every keystroke', async () => {
+    await mountEditor({ ai: { provider: provider(['x']) } });
+    await flush();
+
+    const bubble = wrapper.getComponent({ name: 'UeBubbleMenu' });
+    const first = bubble.props('tasks');
+
+    editor.commands.insertContent('打字');
+    await flush();
+
+    // The default list is rebuilt where it is written. Spelled inline in the
+    // template it would be a new array per render — and this component re-renders
+    // on every transaction — which re-runs the bubble's own filtering each time.
+    expect(bubble.props('tasks')).toBe(first);
   });
 });

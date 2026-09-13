@@ -162,6 +162,7 @@ watch(
       :model-value="cellColor"
       :label="t('table.cellColor')"
       :clear-label="t('table.clearColor')"
+      :t="t"
       @update:model-value="setColor"
       @clear="clearColor"
       @close="closeColor"

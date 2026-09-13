@@ -46,8 +46,27 @@ class Frozen {
 
 const BACKSLASH_ESCAPE = /\\([\\`*_{}[\]()#+\-.!>~|])/g;
 const CODE_SPAN = /(?<!\\)(`+)([^`]|[\s\S]*?[^`])\1(?!`)/g;
-const IMAGE = /!\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]*)(?:\s+"([^"]*)")?\s*\)/g;
-const LINK = /\[([^\]]*)\]\(\s*(<[^>]*>|[^\s)]*)(?:\s+"([^"]*)")?\s*\)/g;
+/**
+ * A bare link destination.
+ *
+ * CommonMark allows parentheses in one as long as they pair up, which is the
+ * only reason `.../Ruby_(programming_language)` survives being written down.
+ * Ending at the first `)` instead truncates the URL and spills its tail into the
+ * paragraph. Backslash-escaped parens never reach here — `BACKSLASH_ESCAPE` has
+ * already parked them as placeholders by the time links are scanned.
+ *
+ * Two levels of nesting, not arbitrary depth: a regex cannot count, and no real
+ * URL nests deeper. Anything past that ends at the first unpaired `)`, exactly
+ * as it does today. The two alternatives start on different characters, so the
+ * engine never has a choice to backtrack over.
+ */
+const CHAR = String.raw`[^\s()]`;
+const NESTED = String.raw`\((?:${CHAR}|\(${CHAR}*\))*\)`;
+const DEST = String.raw`(?:${CHAR}|${NESTED})*`;
+const TAIL = String.raw`(?:\s+"([^"]*)")?\s*\)`;
+
+const IMAGE = new RegExp(String.raw`!\[([^\]]*)\]\(\s*(<[^>]*>|${DEST})${TAIL}`, 'g');
+const LINK = new RegExp(String.raw`\[([^\]]*)\]\(\s*(<[^>]*>|${DEST})${TAIL}`, 'g');
 
 /** `<...>` is the escape hatch for a URL containing spaces or parentheses. */
 const bareUrl = (url: string) =>
@@ -129,6 +148,27 @@ const ORDERED = /^(\s*)(\d{1,9})[.)]\s+(.*)$/;
 const TABLE_DIVIDER = /^\s*\|?(\s*:?-+:?\s*\|)+\s*:?-*:?\s*\|?\s*$/;
 
 const isBlank = (line: string) => !line.trim();
+
+/**
+ * Does this line open a block of its own, ending the lazy continuation of the
+ * quote above it?
+ *
+ * An ordered list only counts when it starts at 1, per CommonMark — otherwise a
+ * sentence that happens to wrap onto `2. ` would be cut in half.
+ *
+ * Thematic breaks are deliberately absent. `---` directly under a line of text is
+ * a setext heading underline, which this parser does not implement; breaking the
+ * quote there would swap one wrong reading for another rather than fix anything.
+ */
+function endsLazyQuote(line: string): boolean {
+  return isBlank(line) || HEADING.test(line) || FENCE.test(line) || canInterruptParagraph(line);
+}
+
+function canInterruptParagraph(line: string): boolean {
+  if (BULLET.test(line)) return true;
+  const ordered = ORDERED.exec(line);
+  return ordered !== null && ordered[2] === '1';
+}
 
 /** Split a pipe-table row, honouring `\|` inside a cell. */
 function tableCells(line: string): string[] {
@@ -257,7 +297,7 @@ function blocksToHTML(lines: string[], tight = false): string {
         }
         // A plain line under a quote is a lazy continuation of it; a blank line or
         // a block of its own ends the quote.
-        if (isBlank(lines[index]) || BULLET.test(lines[index]) || HEADING.test(lines[index])) break;
+        if (endsLazyQuote(lines[index])) break;
         body.push(lines[index]);
         index += 1;
       }
@@ -287,7 +327,10 @@ function blocksToHTML(lines: string[], tight = false): string {
       continue;
     }
 
-    if (BULLET.test(line) || ORDERED.test(line)) {
+    if (
+      (BULLET.test(line) || ORDERED.test(line)) &&
+      (!buffer.length || canInterruptParagraph(line))
+    ) {
       flush();
       const items: ListItem[] = [];
       while (index < lines.length) {
@@ -295,9 +338,18 @@ function blocksToHTML(lines: string[], tight = false): string {
         const ordered = bullet ? null : ORDERED.exec(lines[index]);
         const match = bullet ?? ordered;
         if (match) {
-          items.push({ level: indentOf(match[1]), ordered: !bullet, lines: [match[3]] });
-          index += 1;
-          continue;
+          const level = indentOf(match[1]);
+          const previous = items[items.length - 1];
+          // A marker indented past the item above it opens a nested list, and may
+          // only do so when it could interrupt the paragraph that item is in the
+          // middle of. An ordered marker that does not start at 1 cannot, so it
+          // stays part of the sentence instead of eating its own number.
+          const opensNested = previous !== undefined && level > previous.level;
+          if (!opensNested || canInterruptParagraph(lines[index])) {
+            items.push({ level, ordered: !bullet, lines: [match[3]] });
+            index += 1;
+            continue;
+          }
         }
         // An indented line under an item is a continuation of it.
         if (!isBlank(lines[index]) && /^\s{2,}/.test(lines[index])) {
@@ -305,9 +357,27 @@ function blocksToHTML(lines: string[], tight = false): string {
           index += 1;
           continue;
         }
+        // A blank line followed by an indented line is the *inside* of a loose
+        // item — the separator between two blocks of the same bullet — not the
+        // end of the list. Breaking here is what let a second paragraph escape
+        // its item and become a top-level block, splitting the list around it
+        // and growing a blank line either side on the way back out.
+        if (isBlank(lines[index]) && /^\s{2,}\S/.test(lines[index + 1] ?? '')) {
+          items[items.length - 1].lines.push('');
+          index += 1;
+          continue;
+        }
         break;
       }
-      html.push(renderList(items, 0).html);
+      // `renderList` renders one homogeneous run and reports where it stopped —
+      // it gives up at the first item whose level or marker type differs. Draining
+      // the rest is what keeps a bullet list followed straight by an ordered one,
+      // with no blank line between them, from losing every item after the switch.
+      for (let cursor = 0; cursor < items.length; ) {
+        const run = renderList(items, cursor);
+        html.push(run.html);
+        cursor = run.next;
+      }
       continue;
     }
 

@@ -2,7 +2,7 @@ import {
   CodeBlockLowlight,
   type CodeBlockLowlightOptions
 } from '@tiptap/extension-code-block-lowlight';
-import type { Editor } from '@tiptap/core';
+import { mergeAttributes, type Attributes, type Editor } from '@tiptap/core';
 import type { createLowlight } from 'lowlight';
 import { isBrowser } from '../utils/env';
 import { createTranslator, type LocaleName, type Messages, type Translator } from '../i18n';
@@ -10,6 +10,26 @@ import { ULTRA_EDITOR_OPTIONS_META } from './runtime-options';
 
 /** Structural type for a lowlight instance, without importing the module for it. */
 type LowlightRegistry = ReturnType<typeof createLowlight>;
+
+/**
+ * The same highlighter with its language guessing switched off.
+ *
+ * highlight.js only guesses when a block names no language, and on the short
+ * snippets people actually paste it is wrong about half the time — a JavaScript
+ * arrow function reads as `ini`, so the trailing semicolon paints as a comment;
+ * Go reads as `csharp`. The picker calls an untagged block "PlainText", and this
+ * is what makes that label true. A block that names its language is untouched.
+ *
+ * Delegates through the prototype instead of copying: `loadCommonLanguages`
+ * registers grammars on the original afterwards, and those have to stay visible.
+ */
+export function withoutLanguageGuessing(lowlight: LowlightRegistry): LowlightRegistry {
+  return Object.create(lowlight, {
+    highlightAuto: {
+      value: (value: string) => ({ type: 'root', children: [{ type: 'text', value }] })
+    }
+  }) as LowlightRegistry;
+}
 
 export interface UltraCodeBlockOptions extends CodeBlockLowlightOptions {
   locale: LocaleName;
@@ -40,7 +60,8 @@ const LANGUAGE_LABELS: Record<string, string> = {
   diff: 'Diff',
   go: 'Go',
   graphql: 'GraphQL',
-  ini: 'INI / TOML',
+  ini: 'INI',
+  toml: 'TOML',
   java: 'Java',
   javascript: 'JavaScript',
   json: 'JSON',
@@ -63,12 +84,25 @@ const LANGUAGE_LABELS: Record<string, string> = {
   typescript: 'TypeScript',
   vbnet: 'VB.NET',
   wasm: 'WebAssembly',
-  xml: 'HTML / XML',
+  xml: 'XML',
+  html: 'HTML',
   yaml: 'YAML'
 };
 
 /** Variants of a language that only add noise to a picker. */
 const HIDDEN_LANGUAGES = new Set(['plaintext', 'php-template', 'python-repl']);
+
+/**
+ * Aliases highlight.js resolves but never lists.
+ *
+ * `listLanguages` returns registered grammar *names*, and highlight.js files
+ * TOML under `ini` and HTML under `xml` — so neither can reach the picker on its
+ * own, while `highlight('toml', …)` paints perfectly well. Left out, the picker
+ * makes a TOML author label their block "INI". The highlighting is identical
+ * either way; the id and the label are the whole difference, and they are what
+ * the author meant.
+ */
+const LANGUAGE_ALIASES = ['toml', 'html'];
 
 const labelOf = (id: string) => LANGUAGE_LABELS[id] ?? id;
 
@@ -143,21 +177,74 @@ export const UltraCodeBlock = CodeBlockLowlight.extend<UltraCodeBlockOptions>({
     };
   },
 
+  addAttributes() {
+    const inherited = this.parent?.() as Attributes;
+    // Upstream always declares `language` with a `parseHTML`; the cast is for the
+    // type, not for a shape this node can be built without.
+    const fromClass = inherited.language.parseHTML as (element: HTMLElement) => string | null;
+    return {
+      ...inherited,
+      language: {
+        ...inherited.language,
+        // Two places to read from, because two places write. `data-language` on
+        // the `<pre>` is what this editor emits; the `language-` class on the
+        // `<code>` is what the rest of the world emits — the Markdown parser's
+        // fenced blocks, every document saved before this attribute existed, and
+        // anything pasted in from elsewhere.
+        parseHTML: (element: HTMLElement) =>
+          element.getAttribute('data-language') || fromClass(element)
+      }
+    };
+  },
+
+  /**
+   * `data-language` on the `<pre>`, alongside the class upstream puts on the
+   * `<code>`.
+   *
+   * The class is the only record upstream keeps, and it is the first casualty of
+   * an HTML sanitiser: allow-lists rarely carry an entry for `class`, so a saved
+   * document comes back with the language gone. A data attribute on the element
+   * that *is* the code block survives that, and gives a read-only page something
+   * to label or style the block with.
+   */
+  renderHTML({ node, HTMLAttributes }) {
+    const language = (node.attrs.language as string | null) ?? null;
+    return [
+      'pre',
+      mergeAttributes(
+        this.options.HTMLAttributes,
+        HTMLAttributes,
+        language ? { 'data-language': language } : {}
+      ),
+      ['code', { class: language ? `${this.options.languageClassPrefix}${language}` : null }, 0]
+    ];
+  },
+
   addNodeView() {
     if (!isBrowser()) return null;
 
     const fallback: Translator = createTranslator(this.options.locale, this.options.messages);
     const t = () => this.options.translator?.() ?? fallback;
     const prefix = this.options.languageClassPrefix;
-    const lowlight = this.options.lowlight as { listLanguages: () => string[] };
+    const lowlight = this.options.lowlight as {
+      listLanguages: () => string[];
+      registered: (id: string) => boolean;
+    };
     // Read per open, not once at construction: the default language set is
     // fetched after the editor exists, and a catalogue frozen here would stay
     // empty for the lifetime of the document.
-    const listLanguages = () =>
-      lowlight
-        .listLanguages()
-        .filter((id) => !HIDDEN_LANGUAGES.has(id))
-        .sort((a, b) => labelOf(a).localeCompare(labelOf(b)));
+    //
+    // A Set, so an alias that highlight.js one day promotes to a grammar of its
+    // own lands in the list once rather than twice. Each one is gated on being
+    // registered: a host that brings its own language set must never be offered
+    // a choice that paints nothing.
+    const listLanguages = () => {
+      const ids = new Set(lowlight.listLanguages().filter((id) => !HIDDEN_LANGUAGES.has(id)));
+      LANGUAGE_ALIASES.forEach((id) => {
+        if (lowlight.registered(id)) ids.add(id);
+      });
+      return [...ids].sort((a, b) => labelOf(a).localeCompare(labelOf(b)));
+    };
 
     return ({ editor, node, getPos }) => {
       const dom = document.createElement('div');
