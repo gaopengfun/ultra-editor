@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "pnpm --filter playground dev",
     "build": "pnpm --filter @ultra-editor/core build && pnpm --filter @ultra-editor/vue build",
+    "watch": "pnpm -r --parallel --filter @ultra-editor/core --filter @ultra-editor/vue watch",
     "build:playground": "pnpm build && pnpm --filter playground build && node scripts/smoke-playground-dist.mjs",
     "type-check": "pnpm -r --parallel type-check",
     "test": "vitest run",

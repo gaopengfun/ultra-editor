@@ -39,6 +39,7 @@
   ],
   "scripts": {
     "build": "vite build && pnpm build:types",
+    "watch": "vite build --watch",
     "build:types": "vue-tsc -p tsconfig.build.json",
     "type-check": "vue-tsc -p tsconfig.json --noEmit"
   },
