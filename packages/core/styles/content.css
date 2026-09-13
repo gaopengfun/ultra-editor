@@ -15,6 +15,12 @@
   font-family: var(--ue-font);
   line-height: 1.75;
   word-break: break-word;
+  /* Enclose floated `data-align="left|right"` figures and stop over-wide author
+     content from breaking the host page. `overflow-x` establishes a BFC — so the
+     floats stay contained — and scrolls the rare too-wide element. The editor
+     surface already has this implicitly: its `overflow-y: auto` (editor.css)
+     forces `overflow-x` to `auto`; the bare reading view has no such rule. */
+  overflow-x: auto;
 }
 
 .ue-content:focus {
