@@ -24,6 +24,10 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    // The editor-driving suites (image upload, slash palette) run real timers
+    // through a full jsdom editor; the 5 s default is not enough headroom when
+    // the whole suite runs in parallel on a slow machine.
+    testTimeout: 15000,
     include: ['packages/*/src/**/*.test.ts', 'packages/*/tests/**/*.test.ts'],
     coverage: {
       provider: 'v8',

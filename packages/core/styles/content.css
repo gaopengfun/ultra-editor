@@ -65,10 +65,33 @@
   text-underline-offset: 2px;
 }
 
+/* `list-style-type` is stated explicitly — never inherited from the UA default:
+   a host-page CSS reset (Tailwind preflight sets `list-style: none` on every
+   `ul`/`ol`) has lower specificity than `.ue-content ul`, so our margin and
+   padding survive it while `list-style: none` would go unopposed, silently
+   dropping every marker and leaving lists visually identical to paragraphs. */
 .ue-content ul,
 .ue-content ol {
   margin: 0.75em 0;
   padding-left: 1.5em;
+}
+
+.ue-content ul {
+  list-style-type: disc;
+}
+
+.ue-content ol {
+  list-style-type: decimal;
+}
+
+/* Nested levels keep the classic disc → circle → square progression so depth
+   stays readable. */
+.ue-content ul ul {
+  list-style-type: circle;
+}
+
+.ue-content ul ul ul {
+  list-style-type: square;
 }
 
 .ue-content li p {

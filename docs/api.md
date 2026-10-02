@@ -117,7 +117,7 @@ const editor = new Editor({
 | 选项                                  | 说明                                                    |
 | ------------------------------------- | ------------------------------------------------------- |
 | `placeholder` / `locale` / `messages` | 同组件 props                                            |
-| `upload`                              | `{ upload?, fetchImage?, maxSize?, accept? }`           |
+| `upload`                              | `{ upload?, fetchImage?, maxSize?, concurrency?, accept? }` |
 | `onUploadError`                       | 上传失败回调                                            |
 | `lowlight`                            | 自定义 lowlight 实例，用于选择代码高亮语言              |
 | `markdownPaste`                       | 粘贴 Markdown 自动转换，默认开；可传 getter 运行时切换  |
